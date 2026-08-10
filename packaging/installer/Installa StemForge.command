@@ -4,7 +4,7 @@
 #
 # Cosa fa, nell'ordine:
 #   1. controlla il Mac (macOS 12+, architettura);
-#   2. se manca Python 3.12, scarica quello ufficiale di python.org
+#   2. se manca Python 3.11, scarica quello ufficiale di python.org
 #      e lo installa (chiede la password di amministratore);
 #   3. installa le dipendenze ESATTE del progetto, con verifica
 #      dell'integrita' (hash SHA-256) di ogni pacchetto;
@@ -27,7 +27,8 @@ die() {
 
 cd "$(dirname "$0")"
 
-PY_VERSION="3.12.10"
+# 3.11 obbligato: PySide6 6.4 (l'ultima Qt per macOS < 11) richiede < 3.12.
+PY_VERSION="3.11.9"
 PY_PKG_URL="https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
 BUILD_ENV="$HOME/Library/Application Support/StemForge/build-env"
 SRC_DIR="$PWD/StemForge"
@@ -35,8 +36,12 @@ SRC_DIR="$PWD/StemForge"
 # ---------------------------------------------------------------- 1. il Mac
 say "Controllo questo Mac"
 [ "$(uname -s)" = "Darwin" ] || die "questo installer e' solo per macOS."
-MACOS_MAJOR=$(sw_vers -productVersion | cut -d. -f1)
-[ "$MACOS_MAJOR" -ge 12 ] || die "serve macOS 12 o successivo (questo e' $(sw_vers -productVersion))."
+MACOS_VERSION=$(sw_vers -productVersion)
+MACOS_MAJOR=$(printf '%s' "$MACOS_VERSION" | cut -d. -f1)
+MACOS_MINOR=$(printf '%s' "$MACOS_VERSION" | cut -d. -f2)
+if [ "$MACOS_MAJOR" -lt 10 ] || { [ "$MACOS_MAJOR" -eq 10 ] && [ "${MACOS_MINOR:-0}" -lt 15 ]; }; then
+    die "serve macOS 10.15 Catalina o successivo (questo e' $MACOS_VERSION)."
+fi
 
 if [ "$(uname -m)" = "arm64" ]; then
     # Mac Apple Silicon: StemForge e' costruita per Intel; via Rosetta funziona.
@@ -50,12 +55,9 @@ fi
 echo "    macOS $(sw_vers -productVersion), Intel x86_64: ok."
 
 # ------------------------------------------------------------- 2. Python
-say "Cerco Python 3.12"
+say "Cerco Python 3.11"
 PYTHON=""
 for candidate in \
-    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-    "/usr/local/bin/python3.12" \
-    "$(command -v python3.12 2>/dev/null || true)" \
     "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
     "/usr/local/bin/python3.11" \
     "$(command -v python3.11 2>/dev/null || true)"
@@ -67,13 +69,13 @@ do
 done
 
 if [ -z "$PYTHON" ]; then
-    say "Python 3.12 non trovato: scarico quello ufficiale (python.org)"
+    say "Python 3.11 non trovato: scarico quello ufficiale (python.org)"
     PKG="/tmp/stemforge-python-${PY_VERSION}.pkg"
     curl -fL --progress-bar "$PY_PKG_URL" -o "$PKG" || die "download di Python non riuscito. Controlla la connessione e riprova."
     say "Installo Python ${PY_VERSION} (ti chiedera' la password)"
     sudo installer -pkg "$PKG" -target / || die "installazione di Python non riuscita."
     rm -f "$PKG"
-    PYTHON="/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12"
+    PYTHON="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11"
     [ -x "$PYTHON" ] || die "Python installato ma non trovato dove atteso."
 fi
 echo "    uso: $PYTHON ($("$PYTHON" -c 'import platform; print(platform.python_version())'))"

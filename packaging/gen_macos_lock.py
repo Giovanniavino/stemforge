@@ -21,6 +21,15 @@ WINDOWS_ONLY = {"pywin32", "pywin32-ctypes", "pefile", "altgraph"}
 EXCLUDE = {"stemforge", "pip", "setuptools", "wheel", "pyinstaller",
            "pyinstaller-hooks-contrib", "pytest", "iniconfig", "pluggy"}
 
+# Il target (macOS 10.15, Python 3.11) impone versioni diverse dal dev-box:
+# PySide6 6.4.3 e' l'ultima Qt che gira su macOS < 11 (BUILD_SPEC §2).
+PIN_OVERRIDES = {
+    "pyside6": "6.4.3",
+    "pyside6-essentials": "6.4.3",
+    "pyside6-addons": "6.4.3",
+    "shiboken6": "6.4.3",
+}
+
 _MAC_TAGS = ("macosx", "universal2", "none-any", "py3-none-any")
 
 
@@ -56,7 +65,7 @@ def main() -> int:
         key = name.lower().replace("_", "-")
         if key in EXCLUDE or key in WINDOWS_ONLY:
             continue
-        version = dist.version.split("+")[0]  # 2.2.2+cpu -> 2.2.2
+        version = PIN_OVERRIDES.get(key, dist.version.split("+")[0])  # 2.2.2+cpu -> 2.2.2
         try:
             hashes = _hashes_for(name, version)
         except Exception as exc:  # rete, pacchetto non-PyPI...

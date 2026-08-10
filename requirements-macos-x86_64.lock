@@ -1,4 +1,4 @@
-﻿# requirements-macos-x86_64.lock — generato da packaging/gen_macos_lock.py
+# requirements-macos-x86_64.lock — generato da packaging/gen_macos_lock.py
 # Installare sul Mac Intel con:
 #   python3.11 -m pip install --require-hashes -r requirements-macos-x86_64.lock
 
@@ -101,9 +101,12 @@ pycparser==3.0 --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a950
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
 Pygments==2.20.0 --hash=sha256:6757cd03768053ff99f3039c1a36d6c0aa0b263438fcab17520b30a303a82b5f \
     --hash=sha256:81a9e26dd42fd28a23a2d169d86d7ac03b46e2f8b59ed4698fb4785f946d0176
-PySide6==6.11.1 --hash=sha256:537682c3b7530817203e667c1f5a2f00486b37bf52c52eeab438544c7a0917f6
-PySide6_Addons==6.11.1 --hash=sha256:54733c77f789bef5f03c6aff4ad3bec8b2eff021f0cfcbc53d5e6c250ded24f9
-PySide6_Essentials==6.11.1 --hash=sha256:228de53c2bc26b07e5021fbe3614fc44ca08e4dab9999af08c2b389d2c239957
+PySide6==6.4.3 --hash=sha256:1389e818ecf794b52b570e4617c0813865fd9a790ee077fedabbd8aac6da7416 \
+    --hash=sha256:73883c13bc44221507abc2b3d6a7bebbf0e067844f7d0a6e16b2df177aab89d8
+PySide6_Addons==6.4.3 --hash=sha256:60781372ccf9f9cbc2a1aa7a41318111c92850f2434dbfbf6fa215a89681de1e \
+    --hash=sha256:b95e6a98b1a71aaa2bc97e4a6a4e18e78d6141ff161eff598a3b85850eaacd4a
+PySide6_Essentials==6.4.3 --hash=sha256:62f7f80e99eaaa3b3f7014170bf01c2fa2e76955805f24c443630abc10793abb \
+    --hash=sha256:c41cbef7a25c67da11b6f6281e60f59c21a198c1da471821e43963e1b8f196f7
 PyYAML==6.0.3 --hash=sha256:02893d100e99e03eda1c8fd5c441d8c60103fd175728e23e431db1b589cf5ab3 \
     --hash=sha256:02ea2dfa234451bbb8772601d7b8e426c2bfa197136796224e50e35a78777956 \
     --hash=sha256:214ed4befebe12df36bcc8bc2b64b396ca31be9304b8f59e25c11cf94a4c033b \
@@ -123,7 +126,8 @@ PyYAML==6.0.3 --hash=sha256:02893d100e99e03eda1c8fd5c441d8c60103fd175728e23e431d
 safetensors==0.8.0 --hash=sha256:c554f85858e05226d3c2828e32395e677434685d6d94594a41643361c5e837f0 \
     --hash=sha256:c80201d22cbf405b80647a60ada77bba06c8fba2da2743ba1e89cdcc39a81f25 \
     --hash=sha256:fabaf3e0f18a6618d9b36560682562157f77c2b71fcffc7b432be2baed9d753d
-shiboken6==6.11.1 --hash=sha256:1a16867f103ef1c662a5f09dfed03273a9f81688b174555162c58e83650a3f02
+shiboken6==6.4.3 --hash=sha256:0b6d6a571131b94546aa784dc00221ba7afc90515354eaae65525753a84b6c4a \
+    --hash=sha256:6504ed8b01bde387cebc035687deae77a0bddcef3339e2e5b0e5bf9e6258e860
 soundfile==0.14.0 --hash=sha256:19be05428da76ed61a4cad29b8e4bcf43a3e5c100089d2ec81dc961eed1b0dd4 \
     --hash=sha256:8ba81ae3a89fd5ab3bef8a8eb481fbbe794e806309675a89b4df48b8d31908a8 \
     --hash=sha256:ba1c1a2d618bca5c406647c83b89f07cc8810fa506a50622a6993ba130c1de11 \

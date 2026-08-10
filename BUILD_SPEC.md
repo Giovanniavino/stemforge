@@ -3,7 +3,24 @@
 > Documento unico e autosufficiente. Chi implementa non deve chiedere nulla:
 > ogni decisione è già presa qui, con la motivazione accanto.
 
-Versione spec: 2.2 · Target: **macOS 12+ su Mac Intel (x86_64), solo CPU** · Data: 2026-08-10
+Versione spec: 2.3 · Target: **macOS 10.15+ (Catalina) su Mac Intel (x86_64), solo CPU** · Data: 2026-08-10
+
+### Changelog 2.2 → 2.3
+
+- Target abbassato a **macOS 10.15 Catalina**: la macchina reale del
+  committente è un Mac mini Late 2012, che si ferma lì. Conseguenze:
+  - **Python 3.11** sul target (non 3.12: PySide6 6.4 richiede <3.12);
+  - **PySide6 pinnato == 6.4.3**: è l'ultima serie basata su Qt 6.4,
+    l'ultima Qt che supporta macOS < 11. Non alzare senza cambiare
+    target. Sul dev-box Windows resta ammessa una PySide6 recente: il
+    codice UI usa solo API presenti in entrambe;
+  - torch/torchaudio 2.2.2 restano validi (wheel x86_64 dichiarano
+    macOS 10.9/10.13+);
+  - `LSMinimumSystemVersion = 10.15`; PyInstaller >= 6.6 supporta
+    macOS 10.15+.
+- Aggiunto il pacchetto di installazione inviabile (§9.5): zip con
+  script doppio-click che costruisce l'app nativamente sul Mac
+  dell'utente.
 
 **Priorità dichiarata dal committente:** la qualità del risultato viene
 prima del tempo di calcolo. Un'attesa di ore su un Mac vecchio è
@@ -171,15 +188,15 @@ Mac Intel. L'intero stack è pinnato di conseguenza.
 
 | Componente | Versione | Nota |
 |---|---|---|
-| Python | **3.11.x** | 3.12 accettabile (torch 2.2 ha wheel 3.12); 3.11 preferito per maturità dell'ecosistema su questo pin |
-| PyTorch | **== 2.2.2** | ultima con wheel macOS x86_64; non alzare mai senza cambiare target |
-| torchaudio | **== 2.2.2** | pari a torch |
+| Python | **3.11.x** sul target | obbligato: PySide6 6.4 richiede < 3.12. Sul dev-box anche 3.12 |
+| PyTorch | **== 2.2.2** | ultima con wheel macOS x86_64 (dichiarano 10.9+); non alzare mai senza cambiare target |
+| torchaudio | **== 2.2.2** | pari a torch (wheel 10.13+) |
 | numpy | **>= 1.26, < 2** | torch 2.2 è compilato contro numpy 1.x; numpy 2 lo rompe |
 | demucs | >= 4.0.1 | verificato compatibile con torch 2.2 |
 | soundfile | >= 0.12 | I/O, richiede libsndfile |
-| PySide6 | >= 6.7 | Qt 6.7 supporta macOS 11+ x86_64 |
+| PySide6 | **== 6.4.3** sul target | ultima Qt che gira su macOS < 11; sul dev-box ammessa recente, API comuni |
 | pytest | >= 8 | |
-| PyInstaller | >= 6.6 | packaging `.app` x86_64 |
+| PyInstaller | >= 6.6 | packaging `.app` x86_64; supporta macOS 10.15+ |
 
 Due lock file, uno per piattaforma, entrambi con hash:
 
@@ -925,7 +942,7 @@ PyInstaller, `packaging/stemforge.spec`:
   non usato. Senza esclusioni il bundle passa 1 GB.
 - `.app` con `Info.plist` che dichiara i tipi di file audio in
   `CFBundleDocumentTypes`, così "Apri con" funziona dal Finder.
-- `LSMinimumSystemVersion = 12.0`. Nota di contesto: Apple sta chiudendo
+- `LSMinimumSystemVersion = 10.15`. Nota di contesto: Apple sta chiudendo
   il supporto Intel (macOS 26 è l'ultima major per Intel). Non cambia
   nulla per la v1 — l'app gira offline e continuerà a girare — ma è il
   motivo per cui §13.2 (CoreML) su questo target non promette molto:

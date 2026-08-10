@@ -82,7 +82,10 @@ class WorkerBridge(QObject):
 
     def _on_stdout(self) -> None:
         assert self._process is not None
-        self._buffer += self._process.readAllStandardOutput().toStdString()
+        # bytes(...) e non toStdString(): deve girare anche su PySide6 6.4,
+        # l'ultima disponibile per il target macOS 10.15 (§2)
+        raw = self._process.readAllStandardOutput()
+        self._buffer += bytes(raw).decode("utf-8", errors="replace")
         *lines, self._buffer = self._buffer.split("\n")
         for line in lines:
             message = protocol.decode(line)

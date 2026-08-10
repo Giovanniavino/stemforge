@@ -3,10 +3,14 @@
 Trascina un brano, spunta gli strumenti, premi **Separa**. Poi trascina
 gli stem direttamente nel progetto Ableton (o qualunque DAW) già aperto.
 
-Target: **macOS 12+ su Mac Intel, solo CPU.** La qualità viene prima del
-tempo: il preset di default è `Massima` e l'attesa — anche lunga — viene
-dichiarata onestamente prima di partire, calibrata sulla velocità del
-tuo Mac.
+Target: **macOS 10.15+ (Catalina) su Mac Intel, solo CPU** — va bene
+anche un Mac mini del 2012. La qualità viene prima del tempo: il preset
+di default è `Massima` e l'attesa — anche lunga — viene dichiarata
+onestamente prima di partire, calibrata sulla velocità del tuo Mac.
+
+Installazione: manda all'utente `dist/StemForge-Installer.zip`
+(rigenerabile con `make installer`): doppio click su
+"Installa StemForge.command" e fa tutto da solo.
 
 ## Uso (app)
 

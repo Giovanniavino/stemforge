@@ -19,8 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ui = ["PySide6>=6.7"]
-dev = ["pytest>=8", "PySide6>=6.7", "pyinstaller>=6.6"]
+# sul target macOS 10.15 il lock pinna PySide6==6.4.3 (ultima Qt per
+# macOS < 11, BUILD_SPEC §2); il range qui serve solo al dev-box
+ui = ["PySide6>=6.4"]
+dev = ["pytest>=8", "PySide6>=6.4", "pyinstaller>=6.6"]
 
 [project.scripts]
 stemforge = "stemforge.cli:main"

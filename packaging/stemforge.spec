@@ -67,7 +67,7 @@ app = BUNDLE(
     icon=None,
     bundle_identifier="com.stemforge.app",
     info_plist={
-        "LSMinimumSystemVersion": "12.0",
+        "LSMinimumSystemVersion": "10.15",
         "NSHighResolutionCapable": True,
         # "Apri con" dal Finder (§9.1)
         "CFBundleDocumentTypes": [
