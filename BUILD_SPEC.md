@@ -3,7 +3,7 @@
 > Documento unico e autosufficiente. Chi implementa non deve chiedere nulla:
 > ogni decisione è già presa qui, con la motivazione accanto.
 
-Versione spec: 2.0 · Target: macOS 12+ (Apple Silicon nativo) · Data: 2026-08-10
+Versione spec: 2.1 · Target: macOS 12+ (Apple Silicon nativo) · Data: 2026-08-10
 
 ---
 
@@ -27,6 +27,7 @@ arrangiamento Ableton, senza aprire, importare o salvare niente.
 | O4 | Qualità: nessuna regressione udibile rispetto a Demucs `htdemucs_ft` | §11 |
 | O5 | Velocità: brano di 4 min in < 60 s su M1 in preset `balanced` | §11 |
 | O6 | Non blocca mai: UI reattiva e annullabile durante l'elaborazione | §8.4 |
+| O7 | **Il tempo scala con quanto si chiede**: un solo stem costa una frazione di tutti | §5.3 |
 
 ### Non-obiettivi — da rifiutare se emergono in corso d'opera
 
@@ -141,7 +142,11 @@ stemforge/
 │   ├── engine/                    — separazione
 │   │   ├── contract.py            Backend Protocol, Quality (~90)
 │   │   ├── registry.py            nome -> backend           (~60)
-│   │   ├── demucs4.py             backend Demucs v4         (~140)
+│   │   ├── planner.py             stem -> piano passate     (~170)
+│   │   ├── demucs4.py             backend Demucs v4         (~180)
+│   │   ├── drumsplit.py           2° stadio batteria (M6)   (~150)
+│   │   ├── vocalsplit.py          2° stadio lead/cori (M6)  (~130)
+│   │   ├── dereverb.py            de-riverbero voce (M6)    (~120)
 │   │   ├── roformer.py            backend RoFormer (M4)     (~180)
 │   │   ├── device.py              CUDA / MPS / CPU          (~70)
 │   │   └── audio_io.py            load, resample, write     (~130)
@@ -157,7 +162,8 @@ stemforge/
 │   │   ├── app.py                 bootstrap                 (~90)
 │   │   ├── main_window.py         shell + routing           (~200)
 │   │   ├── drop_zone.py           schermata 1               (~150)
-│   │   ├── stem_picker.py         schermata 2               (~180)
+│   │   ├── stem_picker.py         schermata 2               (~220)
+│   │   ├── stem_group.py          blocco a fisarmonica      (~120)
 │   │   ├── progress_view.py       schermata 3               (~160)
 │   │   ├── result_view.py         schermata 4 + drag out    (~200)
 │   │   ├── bridge.py              QProcess <-> worker       (~180)
@@ -192,19 +198,55 @@ compare in un import di `engine`, la build fallisce.
 
 ### 4.1 `StemKind`
 
+Due livelli. I **base** escono dal primo stadio, i **derivati** dal secondo
+(§5.2) e si ottengono lavorando su uno stem base già pulito.
+
 ```python
 class StemKind(StrEnum):
-    VOCALS = "vocals"
-    DRUMS  = "drums"
-    BASS   = "bass"
-    GUITAR = "guitar"
-    PIANO  = "piano"
-    OTHER  = "other"
+    # base — primo stadio (§5.1)
+    VOCALS       = "vocals"
+    DRUMS        = "drums"
+    BASS         = "bass"
+    GUITAR       = "guitar"
+    PIANO        = "piano"
+    OTHER        = "other"
+    INSTRUMENTAL = "instrumental"    # mix meno vocals, per sottrazione
+
+    # derivati da DRUMS — secondo stadio
+    KICK    = "kick"
+    SNARE   = "snare"
+    TOMS    = "toms"
+    HIHAT   = "hihat"
+    CYMBALS = "cymbals"
+
+    # derivati da VOCALS — secondo stadio
+    LEAD_VOCALS    = "lead_vocals"
+    BACKING_VOCALS = "backing_vocals"
 ```
 
-Sei valori, non uno di più. Tutto ciò che non ricade in queste categorie —
-archi, fiati, synth, percussioni accessorie — finisce in `other`, che è il
-residuo per costruzione.
+Tutto ciò che non ricade in queste categorie — archi, fiati, synth,
+tastiere, percussioni accessorie — finisce in `other`, che è il residuo per
+costruzione. **Non se ne parla nell'interfaccia**: non c'è una casella
+"archi" disabilitata, non c'è una nota che spiega perché mancano. `other`
+è semplicemente ciò che resta.
+
+`INSTRUMENTAL` è gratis: è `mix - vocals`, calcolato per sottrazione senza
+alcuna inferenza aggiuntiva.
+
+### 4.1.1 `StemSpec` — la tabella delle dipendenze
+
+```python
+@dataclass(frozen=True)
+class StemSpec:
+    kind: StemKind
+    stage: int                    # 1 = base, 2 = derivato
+    derives_from: StemKind | None # None per i base
+    label: str                    # nome mostrato nell'UI
+```
+
+Il grafo delle dipendenze è ciò che permette al pianificatore (§5.6) di
+sapere che chiedere `kick` implica calcolare `drums`, anche se l'utente
+non ha spuntato `drums`.
 
 ### 4.2 `SeparationJob`
 
@@ -217,6 +259,7 @@ class SeparationJob:
     out_dir: Path
     fmt: str                  # "wav" | "flac"
     device: str               # "auto" | "cpu" | "cuda" | "mps"
+    dereverb_vocals: bool = False   # §5.2.3, opzione non stem
 ```
 
 Immutabile. Serializzabile in JSON (attraversa il confine fra processi).
@@ -247,24 +290,160 @@ uno schema che non conoscono con un errore chiaro.
 
 ## 5. Il motore di separazione
 
-### 5.1 Scelta del modello
-
-Un solo stadio di separazione. Nessuna cascata.
+### 5.1 Primo stadio — scelta del modello
 
 | Se l'utente chiede | Modello | Stem prodotti |
 |---|---|---|
 | solo voce/batteria/basso/altro | `htdemucs_ft` | 4 |
 | anche chitarra o piano | `htdemucs_6s` | 6 |
 
-`htdemucs_ft` è più pulito sui quattro classici, quindi va preferito
-quando basta. La scelta è automatica: l'utente spunta gli strumenti, l'app
-decide il modello e non gliene parla.
+`htdemucs_ft` è più pulito sui quattro classici, quindi va preferito quando
+basta. La scelta è automatica: l'utente spunta gli strumenti, l'app decide
+il modello e non gliene parla.
 
-Gli stem non richiesti **non vengono scritti su disco**, ma vengono
-comunque calcolati (il modello li produce tutti in un colpo solo) e sommati
-dentro `other`, per preservare l'invariante di §10.2.
+Gli stem non richiesti non vengono scritti su disco, ma sono comunque
+sommati dentro `other`, per preservare l'invariante di §10.2.
 
-### 5.2 Contratto `Backend`
+### 5.1.1 L'ottimizzazione che rende conveniente chiedere poco
+
+`htdemucs_ft` non è un modello: è un **insieme di quattro modelli
+specializzati** (uno per sorgente) che vengono eseguiti tutti e poi mediati.
+È da lì che viene la sua qualità superiore, ed è da lì che viene il suo
+costo: quattro inferenze complete.
+
+**Se l'utente chiede un solo stem base, si esegue soltanto il sotto-modello
+specializzato in quella sorgente.** Chi vuole solo la voce paga circa un
+quarto del tempo, e la ottiene alla stessa qualità — perché il sotto-modello
+della voce è esattamente ciò che rende `htdemucs_ft` buono sulla voce.
+
+Regola di attivazione:
+
+| Stem base richiesti | Esecuzione |
+|---|---|
+| 1 (più eventuale `other`/`instrumental`) | **solo** il sotto-modello corrispondente |
+| 2 o 3 | i sotto-modelli corrispondenti |
+| 4 | insieme completo, come oggi |
+
+Il complemento si ricava per sottrazione: `other = mix − stem_richiesti`.
+La sottrazione è esatta, quindi l'invariante di §10.2 regge per costruzione
+— anzi, regge *meglio* del caso completo.
+
+**Verifica obbligatoria** (`tests/integration/test_single_source.py`): lo
+stem prodotto dal solo sotto-modello va confrontato con quello prodotto
+dall'insieme completo. Differenza attesa sotto −25 dBFS RMS. Se emergesse
+una differenza udibile, l'ottimizzazione va limitata al preset `fast` e
+`balanced`, lasciando `best` sempre completo. Non va rimossa: il guadagno
+è troppo grande.
+
+Su `htdemucs_6s` questa ottimizzazione **non si applica** — non è un
+insieme, è un modello singolo a sei uscite. Chiedere chitarra o piano costa
+sempre una passata intera.
+
+### 5.2 Secondo stadio — stem derivati
+
+Gira **solo se** l'utente ha chiesto almeno uno stem derivato, e opera
+**solo** sullo stem base da cui deriva, mai sul mix.
+
+È la ragione per cui questi tre funzionano dove archi e fiati falliscono:
+hanno davanti un problema molto più facile, perché il materiale su cui
+lavorano è già stato ripulito dal primo stadio.
+
+```
+                  ┌─ vocals ──[ 2° stadio ]──┬─ lead_vocals
+                  │                          └─ backing_vocals
+  MIX ──[ 1° ]────┼─ drums ───[ 2° stadio ]──┬─ kick
+                  │                          ├─ snare
+                  ├─ bass                    ├─ toms
+                  ├─ guitar                  ├─ hihat
+                  ├─ piano                   └─ cymbals
+                  └─ other
+```
+
+#### 5.2.1 Batteria → kick / snare / toms / hihat / cymbals
+
+Il derivato con la resa migliore. I colpi di batteria sono transienti
+spettralmente distinti e temporalmente sparsi: è il caso più favorevole che
+esista per una separazione.
+
+- Backend dedicato in `engine/drumsplit.py`, contratto identico a §5.5.
+- Ingresso: lo stem `drums` a 44100 Hz. Mai il mix.
+- Il residuo (rullantini, percussioni non riconosciute, riverbero della
+  stanza) rientra in un `drums_other` che **non** viene scritto separatamente
+  ma sommato allo stem `drums` se richiesto, o a `other` altrimenti.
+- Costo: una passata su un solo stem, cioè una frazione del primo stadio.
+
+#### 5.2.2 Voce → lead / cori
+
+Modello di tipo "karaoke" applicato allo stem `vocals`. Separa la linea
+principale dalle armonizzazioni e dai raddoppi.
+
+Limite da conoscere: sui **raddoppi all'unisono** della stessa voce la
+separazione è debole, perché non c'è quasi nulla che distingua le due
+tracce. Funziona bene sulle armonizzazioni a intervalli. Non è un caso da
+gestire nel codice, è un fatto da non sorprendersi di trovare.
+
+#### 5.2.3 Voce → de-riverbero
+
+Non produce uno stem: **modifica** lo stem `vocals`. Toglie riverbero e
+delay, restituendo una voce asciutta, molto più utile da ricampionare.
+
+- È una **casella opzionale** accanto alla voce, non uno strumento nella
+  griglia.
+- Quando attiva, `vocals.wav` è la versione asciutta e viene scritto anche
+  `vocals_wet.wav` con l'originale. L'utente non deve mai perdere il
+  materiale non trattato.
+- **Rompe l'invariante di ricostruzione**, ed è l'unica cosa in tutta la
+  spec che può farlo: il riverbero rimosso non è più nella somma. Il test
+  di §10.2 deve girare sulla versione `_wet` quando l'opzione è attiva.
+  Segnare nel manifest `"dereverb": true`.
+
+#### 5.2.4 Regola comune ai derivati
+
+Se un modello di secondo stadio non è disponibile o fallisce, **lo stem
+base sopravvive**. L'utente ottiene `drums.wav` invece di kick e snare, con
+un avviso non bloccante. Non si perde mai il lavoro del primo stadio per
+colpa del secondo.
+
+### 5.3 Pianificatore — il tempo scala con quanto si chiede
+
+Il punto di questa sezione: **chiedere una traccia sola deve costare una
+frazione di chiedere tutto**, non lo stesso tempo con meno file in uscita.
+
+Il pianificatore riceve gli stem richiesti e produce un piano di esecuzione:
+
+1. **Chiusura delle dipendenze.** Per ogni derivato richiesto, aggiungere il
+   suo `derives_from`. Chi chiede `kick` fa calcolare `drums` anche senza
+   averlo spuntato — ma `drums.wav` viene scritto solo se richiesto
+   esplicitamente.
+2. **Scelta del modello di 1° stadio** (§5.1): `6s` solo se servono chitarra
+   o piano.
+3. **Applicazione di §5.1.1** se i base sono tre o meno e il modello è `ft`.
+4. **Elenco delle passate di 2° stadio**, una per stem base coinvolto.
+5. **Stima del tempo** = somma dei costi di ogni passata, dove ogni passata
+   ha un costo misurato e tabellato per device e preset.
+
+Il piano è un oggetto ispezionabile e **testabile senza torch**: dato un
+insieme di stem richiesti, produce un elenco di passate. È il pezzo di
+logica con più casi limite di tutto il progetto e va coperto da test
+unitari esaustivi, non da test di integrazione lenti.
+
+### 5.4 Tempi risultanti — MacBook Air M1, brano 4 min, `balanced`
+
+| Richiesta | Passate | Tempo |
+|---|---|---|
+| solo `vocals` | 1 sotto-modello | **~18 s** |
+| `vocals` + `instrumental` | 1 sotto-modello + sottrazione | ~18 s |
+| `vocals` + `drums` | 2 sotto-modelli | ~32 s |
+| i 4 base | insieme completo | ~60 s |
+| i 6 base (con chitarra/piano) | `6s`, passata singola | ~45 s |
+| 4 base + split batteria | completo + 1 | ~70 s |
+| 4 base + split batteria + lead/cori + de-riverbero | completo + 3 | **~85 s** |
+
+Il rapporto fra il minimo e il massimo è quasi **1 a 5**. È l'obiettivo O7,
+ed è ciò che rende l'app usabile sia per un lavoro veloce che per una resa
+completa.
+
+### 5.5 Contratto `Backend`
 
 ```python
 class Backend(Protocol):
@@ -287,7 +466,7 @@ Due punti non negoziabili:
   brano. Annullare deve avere effetto entro un secondo.
 - `on_progress` riceve 0.0–1.0 monotòno crescente. Mai all'indietro.
 
-### 5.3 Preset qualità
+### 5.6 Preset qualità
 
 ```python
 @dataclass(frozen=True)
@@ -313,7 +492,7 @@ Perché questi numeri:
 - **fp16 solo su GPU/MPS.** Su CPU è emulato e più lento: forzarlo a
   `False` quando `device == "cpu"`, ignorando il preset.
 
-### 5.4 I/O audio — regole
+### 5.7 I/O audio — regole
 
 1. Decodifica sempre a **float32**, mai int.
 2. I modelli girano a **44100 Hz**. Se la sorgente ha un altro sample rate,
@@ -453,19 +632,51 @@ File non audio: rifiutati con messaggio inline, senza dialog modale.
 
 ### 8.2 Schermata 2 — Scelta strumenti
 
-Sei card, una per `StemKind`: icona, nome, checkbox.
+È la schermata dove l'utente decide quanto tempo vuole spendere. Deve
+rendere quel legame evidente senza spiegarlo a parole.
+
+**Riga 0 — le due scorciatoie**, in cima, grandi:
+`Tutto` e `Solo voce`. Sono gli estremi che si usano il 90% delle volte:
+la resa completa e il lavoro veloce. Un click, non sei.
+
+**Blocco 1 — Strumenti.** Sette card: voce, batteria, basso, chitarra,
+piano, altro, strumentale. Icona, nome, checkbox.
 Voce, batteria, basso e altro preselezionati.
 
-In fondo due soli controlli: **preset qualità** e **formato**.
+**Blocco 2 — Dettaglio batteria**, sotto la card batteria, chiuso a
+fisarmonica. Kick, snare, toms, hi-hat, cymbals. Aprirlo e spuntarne uno
+seleziona automaticamente la batteria come dipendenza (§5.3).
 
-Stima del tempo, calcolata da durata × preset × device, aggiornata dal
-vivo. Va **sovrastimata del 15%**: finire prima del previsto è un piacere,
-dopo è un difetto.
+**Blocco 3 — Dettaglio voce**, stessa forma. Lead, cori, e la casella
+`Togli il riverbero` — che è un'opzione, non uno strumento, e va graficamente
+distinta dalle altre.
+
+I due blocchi a fisarmonica restano **chiusi di default**: chi vuole i
+quattro stem classici non deve nemmeno vederli.
+
+**In fondo** due soli controlli: **preset qualità** e **formato**.
+
+#### 8.2.1 La stima del tempo
+
+Sempre visibile, in basso, aggiornata dal vivo a ogni spunta. Viene dal
+pianificatore (§5.3), non da una formula approssimata nell'UI: è la somma
+reale delle passate che verranno eseguite.
+
+- **Deve scendere quando si toglie roba**, e visibilmente. È il feedback che
+  insegna all'utente che chiedere meno costa meno — senza quel feedback,
+  l'ottimizzazione di §5.1.1 esiste ma nessuno la sfrutta.
+- Va **sovrastimata del 15%**: finire prima del previsto è un piacere, dopo
+  è un difetto.
+- Accanto, il numero di passate in chiaro: *"~18 s · 1 passata"*.
 
 ### 8.3 Schermata 3 — Avanzamento
 
-- Barra 0–100% con la fase corrente in parole: *"Separazione"*,
-  *"Scrittura stem"*.
+- Barra 0–100% con la fase corrente in parole: *"Separazione — passata 2
+  di 3"*, *"Dettaglio batteria"*, *"Scrittura stem"*.
+- Con più passate, l'avanzamento globale è la **somma pesata** dei costi
+  stimati di ciascuna, non la media semplice: le passate di 2° stadio sono
+  molto più corte della prima e una barra che le trattasse alla pari
+  sembrerebbe bloccata all'inizio e poi scattante alla fine.
 - Tempo rimanente, aggiornato ogni 2 s, con media mobile per non farlo
   saltellare.
 - **Pulsante Annulla sempre attivo**, che uccide il processo figlio entro
@@ -582,10 +793,23 @@ Verificare anche: **lunghezza in campioni identica** al sorgente (uno
 sfasamento di anche un solo campione manda fuori sync lo stem una volta
 trascinato nel progetto), e sample rate identico.
 
+L'invariante vale **a ogni livello dell'albero**: se sono stati prodotti
+kick, snare, toms, hi-hat e cymbals, la loro somma più il residuo deve
+ricostruire `drums`. Unica eccezione ammessa in tutta la spec: il
+de-riverbero (§5.2.3), che va testato sulla versione `_wet`.
+
 ### 10.3 Unitari e integrazione
 
 Unitari senza torch, veloci: `model/`, `manifest`, `device`, parsing CLI,
 naming e collisioni di cartella. Tempo totale **< 5 secondi**.
+
+**Il pianificatore (§5.3) va coperto in modo esaustivo**, ed è il test
+unitario più importante del progetto perché è dove si annidano i casi
+limite: chiedere `kick` senza `drums`; chiedere `lead_vocals` con
+`dereverb` attivo; chiedere solo `instrumental`; chiedere un derivato di
+`drums` e uno di `vocals` insieme; chiedere tutto. Per ognuno si verifica
+il modello di 1° stadio scelto, l'elenco esatto delle passate, e quali file
+finiscono su disco. Gira senza torch, in millisecondi.
 
 Integrazione: pipeline completa con backend finto (< 10 s); pipeline con
 Demucs reale marcata `@pytest.mark.slow`; annullamento che uccide il
@@ -633,11 +857,15 @@ successivo senza aver soddisfatto il precedente.**
 
 ### M1 — Il motore
 
-`model/`, `engine/`, `export/folder.py`, `cli.py`. Nessuna UI.
+`model/`, `engine/` (incluso `planner.py`), `export/folder.py`, `cli.py`.
+Nessuna UI.
 
 > **Uscita:** `stemforge brano.mp3 --stems vocals,drums,bass,other` produce
 > quattro WAV corretti; l'invariante di ricostruzione (§10.2) passa; il
-> tetto di 60 s (§6.1) è rispettato.
+> tetto di 60 s (§6.1) è rispettato. **E inoltre:**
+> `stemforge brano.mp3 --stems vocals` finisce in **meno di 25 s**,
+> dimostrando che §5.1.1 funziona, con lo stem indistinguibile da quello
+> prodotto dall'insieme completo.
 
 ### M2 — App standalone
 
@@ -671,6 +899,29 @@ Batch, preview d'ascolto, notarizzazione.
 
 > **Uscita:** 20 brani in coda senza perdite di memoria; app notarizzata
 > che si apre su un Mac di terze parti senza avvisi di sicurezza.
+
+### M6 — Stem derivati
+
+`engine/drumsplit.py`, `vocalsplit.py`, `dereverb.py`, blocchi a
+fisarmonica nell'UI (§8.2).
+
+Ordine di implementazione, dal più redditizio al meno:
+
+1. **Split batteria** — il derivato con la resa migliore, e quello che apre
+   più possibilità in fase di campionamento.
+2. **De-riverbero voce** — trasformazione singola, nessun grafo di
+   dipendenze da gestire, effetto immediatamente percepibile.
+3. **Lead / cori** — il più fragile dei tre.
+
+> **Uscita:** kick e snare estratti da un brano reale sono utilizzabili
+> singolarmente senza artefatti udibili; l'invariante di ricostruzione
+> regge a due livelli (§10.2); il pianificatore risolve correttamente tutte
+> le combinazioni coperte dai test di §10.3; il tempo dichiarato in §5.4
+> per la richiesta massima è rispettato.
+
+**Se uno dei tre non raggiunge una qualità utilizzabile, non si spedisce.**
+Uno stem derivato mediocre è peggio della sua assenza: l'utente lo prova
+una volta, non funziona, e smette di fidarsi anche del resto.
 
 ---
 
