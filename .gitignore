@@ -8,3 +8,7 @@ stems/
 *.wav
 *.mp3
 *.flac
+
+packaging/build/
+packaging/dist/
+gen_lock_err.txt

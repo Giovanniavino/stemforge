@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stemforge"
+version = "0.1.0"
+description = "Separazione stem standalone con consegna drag & drop alla DAW"
+requires-python = ">=3.11,<3.13"
+license = { text = "Proprietary" }
+dependencies = [
+    # torch 2.2.2 e' l'ultima versione con wheel macOS x86_64 (BUILD_SPEC §2).
+    # Non alzare mai questo pin finche' il target resta Mac Intel.
+    "torch==2.2.2",
+    "torchaudio==2.2.2",
+    "numpy>=1.26,<2",
+    "demucs>=4.0.1",
+    "soundfile>=0.12",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6>=6.7"]
+dev = ["pytest>=8", "PySide6>=6.7", "pyinstaller>=6.6"]
+
+[project.scripts]
+stemforge = "stemforge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "slow: test con modelli reali, esclusi dal giro veloce (deselect con -m 'not slow')",
+]
+addopts = "-m 'not slow'"

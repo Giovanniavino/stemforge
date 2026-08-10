@@ -3,7 +3,36 @@
 > Documento unico e autosufficiente. Chi implementa non deve chiedere nulla:
 > ogni decisione è già presa qui, con la motivazione accanto.
 
-Versione spec: 2.1 · Target: macOS 12+ (Apple Silicon nativo) · Data: 2026-08-10
+Versione spec: 2.2 · Target: **macOS 12+ su Mac Intel (x86_64), solo CPU** · Data: 2026-08-10
+
+**Priorità dichiarata dal committente:** la qualità del risultato viene
+prima del tempo di calcolo. Un'attesa di ore su un Mac vecchio è
+accettabile; uno stem mediocre non lo è. Ogni compromesso qualità/velocità
+in questa spec è risolto a favore della qualità.
+
+### Changelog 2.1 → 2.2
+
+- Target corretto: da Apple Silicon/MPS a **Intel x86_64, solo CPU**.
+  Sviluppo su Windows + GPU NVIDIA (CUDA) ammesso come ambiente di lavoro,
+  ma il target di consegna è il Mac Intel.
+- Stack pinnato a `torch==2.2.2` (ultima versione con wheel macOS x86_64)
+  e `numpy < 2` (§2).
+- Tutti i tempi assoluti declassati da **vincolo** a **informazione**.
+  Resta vincolante la scalabilità (O7) e l'onestà della stima (§8.2.1).
+- Preset di default: **`best`**. L'insieme completo non viene mai
+  sacrificato in `best` (§5.1.1, §5.6).
+- IPC unificato: **QProcess + JSON-lines su stdio** (D2). Eliminato
+  `multiprocessing`.
+- Blocchi per file lunghi: overlap-add a finestre complementari, che
+  preserva l'invariante di ricostruzione (§5.7).
+- Annullamento: la garanzia del secondo la dà l'uccisione del processo,
+  non `should_cancel` (§5.5).
+- Aggiunta la tabella dei modelli di 2° stadio e RoFormer con fonti,
+  licenze e procedura di fissaggio degli hash (§5.8).
+- Packaging: `target_arch = "x86_64"`, firma senza `--deep` (§9).
+- Stima dello spazio disco calcolata dal piano, non con un fattore fisso
+  (§10.1).
+- Calibrazione dei costi al primo avvio sulla macchina reale (§8.2.1).
 
 ---
 
@@ -24,10 +53,16 @@ arrangiamento Ableton, senza aprire, importare o salvare niente.
 | O1 | Separazione multi-strumento con scelta dell'utente | §5 |
 | O2 | Drag & drop diretto nel progetto DAW aperto | §7 |
 | O3 | App standalone, doppio click, zero terminale, zero Python da installare | §9 |
-| O4 | Qualità: nessuna regressione udibile rispetto a Demucs `htdemucs_ft` | §11 |
-| O5 | Velocità: brano di 4 min in < 60 s su M1 in preset `balanced` | §11 |
+| O4 | Qualità: nessuna regressione udibile rispetto a Demucs `htdemucs_ft` completo | §11 |
+| O5 | **Onestà sul tempo**: prima di partire l'utente vede una stima calibrata sulla *sua* macchina, e la stima non mente | §8.2.1 |
 | O6 | Non blocca mai: UI reattiva e annullabile durante l'elaborazione | §8.4 |
 | O7 | **Il tempo scala con quanto si chiede**: un solo stem costa una frazione di tutti | §5.3 |
+
+Non c'è un obiettivo di tempo assoluto. Su un Mac Intel senza GPU la
+separazione completa di un brano richiede decine di minuti, e va bene
+così: il committente preferisce aspettare che rinunciare alla qualità.
+Ciò che non va bene è *mentire* sull'attesa (O5) o far pagare l'attesa
+piena a chi chiede una traccia sola (O7).
 
 ### Non-obiettivi — da rifiutare se emergono in corso d'opera
 
@@ -53,27 +88,39 @@ Ognuna con la ragione. Non cambiarle senza una ragione più forte.
 
 Tutti i modelli di separazione allo stato dell'arte escono in PyTorch.
 Riscrivere l'inferenza in C++ non aggiunge un decibel: il tempo è speso
-dentro le primitive tensoriali, che sono già C++/Metal compilato. Il
-linguaggio dell'involucro è irrilevante per la qualità e quasi irrilevante
-per la velocità.
+dentro le primitive tensoriali, che sono già C++ compilato. Il linguaggio
+dell'involucro è irrilevante per la qualità e quasi irrilevante per la
+velocità.
 
 Java è escluso senza appello: nessun ecosistema ML audio, e la JVM è un
 peso morto in un'app che deve muovere centinaia di MB di float.
 
 C++ tornerà utile solo in §13.2, se un giorno si vorrà eliminare la
-dipendenza da torch esportando in CoreML. Non è nello scope della v1.
+dipendenza da torch. Non è nello scope della v1.
 
-### D2 — Processo separato per l'inferenza
+### D2 — Processo separato per l'inferenza, via QProcess + JSON-lines
 
 L'UI e il motore girano in **due processi**, non due thread.
 
-Motivo: torch su MPS può bloccarsi o esaurire memoria in modi che non si
+Motivo: torch può bloccarsi o esaurire memoria in modi che non si
 recuperano nello stesso processo, e il GIL rende comunque il threading
-inutile qui. Un processo figlio si può **uccidere davvero** quando l'utente
-preme Annulla — con un thread non si può.
+inutile qui. Un processo figlio si può **uccidere davvero** quando
+l'utente preme Annulla — con un thread non si può.
 
-Comunicazione: `multiprocessing` con una `Queue` per i messaggi di
-avanzamento. Nessun socket, nessun HTTP, nessun server locale.
+Comunicazione: il figlio è lanciato con **`QProcess`** e parla con l'UI
+in **JSON-lines su stdout** (un oggetto JSON per riga: avanzamento, fase,
+errori, risultato). Lo stdin del figlio riceve il `SeparationJob`
+serializzato alla partenza e nient'altro.
+
+Perché non `multiprocessing`: dentro un bundle PyInstaller su macOS
+`multiprocessing` è fragile (gestione di `freeze_support`, spawn del
+binario sbagliato, pickling attraverso il confine del bundle). `QProcess`
+si integra nel loop eventi Qt senza thread di polling, e un protocollo
+JSON su stdio è banale da testare senza Qt. Nessun socket, nessun HTTP,
+nessun server locale.
+
+`worker/protocol.py` definisce i messaggi JSON ed è l'unico posto dove
+sono definiti: UI e worker importano entrambi da lì.
 
 ### D3 — UI in PySide6 (Qt), non Electron né web
 
@@ -88,7 +135,7 @@ controller da 3107 righe. Regola dura, verificata in CI (§10.4):
 ### D4 — Backend di separazione intercambiabili
 
 Il campo si muove in fretta: Demucs oggi, RoFormer domani, altro fra un
-anno. Il motore espone un contratto stabile (§5.2) e ogni famiglia di
+anno. Il motore espone un contratto stabile (§5.5) e ogni famiglia di
 modelli è un modulo isolato. Cambiare modello non deve toccare UI, export
 o data model.
 
@@ -99,23 +146,49 @@ Una cartella di file che l'utente può aprire, spostare, trascinare e
 cancellare con il Finder. Il `manifest.json` accanto serve all'app per
 ripopolare la schermata risultato senza ricalcolare niente.
 
+### D6 — Sviluppo su Windows/CUDA, consegna su Mac Intel/CPU
+
+Lo sviluppo avviene su Windows con GPU NVIDIA. Sul dev-box l'inferenza
+gira su CUDA ed è 10–30 volte più veloce che sul target. Regole per non
+farsi ingannare:
+
+- Nessun numero di prestazioni misurato su CUDA entra mai nella spec,
+  nella UI o nei criteri di uscita. I costi tabellati vengono **solo**
+  dalla calibrazione sulla macchina dell'utente (§8.2.1) o da misure sul
+  Mac Intel di riferimento.
+- La CI esegue il benchmark di scalabilità (§6.3) con `device=cpu` anche
+  su Windows: i tempi assoluti non significano nulla, i **rapporti** sì.
+- Il codice non contiene alcuna API specifica di piattaforma fuori da
+  `ui/` e `packaging/` (§13.3): il motore identico gira su entrambe.
+
 ---
 
 ## 2. Stack — versioni esatte
 
+Il vincolo che comanda tutto: **l'ultima versione di PyTorch pubblicata
+con wheel macOS x86_64 è la 2.2.2.** Versioni successive non esistono per
+Mac Intel. L'intero stack è pinnato di conseguenza.
+
 | Componente | Versione | Nota |
 |---|---|---|
-| Python | **3.12.x** | 3.13+ non è supportato da torch. 3.11 accettabile. |
-| PyTorch | >= 2.4 | MPS stabile su Apple Silicon |
-| torchaudio | pari a torch | |
-| demucs | >= 4.0.1 | backend base |
+| Python | **3.11.x** | 3.12 accettabile (torch 2.2 ha wheel 3.12); 3.11 preferito per maturità dell'ecosistema su questo pin |
+| PyTorch | **== 2.2.2** | ultima con wheel macOS x86_64; non alzare mai senza cambiare target |
+| torchaudio | **== 2.2.2** | pari a torch |
+| numpy | **>= 1.26, < 2** | torch 2.2 è compilato contro numpy 1.x; numpy 2 lo rompe |
+| demucs | >= 4.0.1 | verificato compatibile con torch 2.2 |
 | soundfile | >= 0.12 | I/O, richiede libsndfile |
-| PySide6 | >= 6.7 | UI |
-| numpy | >= 1.26, < 3 | |
+| PySide6 | >= 6.7 | Qt 6.7 supporta macOS 11+ x86_64 |
 | pytest | >= 8 | |
-| PyInstaller | >= 6.6 | packaging `.app` |
+| PyInstaller | >= 6.6 | packaging `.app` x86_64 |
 
-Fissare tutto in `requirements.lock` con hash. `pyproject.toml` per i range.
+Due lock file, uno per piattaforma, entrambi con hash:
+
+- `requirements-macos-x86_64.lock` — quello che conta, usato dal build.
+- `requirements-dev-win.lock` — dev su Windows; identico salvo
+  `torch==2.2.2+cu121` per l'inferenza CUDA in sviluppo.
+
+`pyproject.toml` per i range. Qualsiasi aggiornamento di torch è vietato
+finché il target resta Mac Intel: è il pin più importante del progetto.
 
 ---
 
@@ -128,7 +201,8 @@ stemforge/
 ├── BUILD_SPEC.md                  questo file
 ├── README.md                      uso, 1 pagina
 ├── pyproject.toml
-├── requirements.lock
+├── requirements-macos-x86_64.lock
+├── requirements-dev-win.lock
 ├── Makefile                       dev, test, lint, build, sign
 │
 ├── src/stemforge/
@@ -148,11 +222,12 @@ stemforge/
 │   │   ├── vocalsplit.py          2° stadio lead/cori (M6)  (~130)
 │   │   ├── dereverb.py            de-riverbero voce (M6)    (~120)
 │   │   ├── roformer.py            backend RoFormer (M4)     (~180)
-│   │   ├── device.py              CUDA / MPS / CPU          (~70)
+│   │   ├── device.py              CUDA / CPU                (~70)
+│   │   ├── calibrate.py           micro-benchmark 1° avvio  (~90)
 │   │   └── audio_io.py            load, resample, write     (~130)
 │   │
 │   ├── worker/                    — processo figlio
-│   │   ├── protocol.py            messaggi UI <-> worker    (~90)
+│   │   ├── protocol.py            messaggi JSON UI <-> worker (~90)
 │   │   └── runner.py              entry point del figlio    (~150)
 │   │
 │   ├── export/
@@ -177,7 +252,7 @@ stemforge/
 │   └── integration/
 │
 └── packaging/
-    ├── stemforge.spec             PyInstaller
+    ├── stemforge.spec             PyInstaller, x86_64
     ├── entitlements.plist
     └── notarize.sh
 ```
@@ -244,7 +319,7 @@ class StemSpec:
     label: str                    # nome mostrato nell'UI
 ```
 
-Il grafo delle dipendenze è ciò che permette al pianificatore (§5.6) di
+Il grafo delle dipendenze è ciò che permette al pianificatore (§5.3) di
 sapere che chiedere `kick` implica calcolare `drums`, anche se l'utente
 non ha spuntato `drums`.
 
@@ -258,11 +333,15 @@ class SeparationJob:
     quality: str              # "fast" | "balanced" | "best"
     out_dir: Path
     fmt: str                  # "wav" | "flac"
-    device: str               # "auto" | "cpu" | "cuda" | "mps"
+    device: str               # "auto" | "cpu" | "cuda"
     dereverb_vocals: bool = False   # §5.2.3, opzione non stem
 ```
 
-Immutabile. Serializzabile in JSON (attraversa il confine fra processi).
+`device="auto"` sceglie CUDA se disponibile (dev-box Windows), altrimenti
+CPU (target Mac Intel). Non esiste il caso MPS: il target non lo ha.
+
+Immutabile. Serializzabile in JSON (attraversa il confine fra processi
+come primo messaggio su stdin del worker, vedi D2).
 
 ### 4.3 `manifest.json` — contratto stabile
 
@@ -274,7 +353,7 @@ Scritto accanto agli stem.
   "source": { "name": "brano.mp3", "sha1": "…", "duration_s": 214.7 },
   "audio":  { "samplerate": 44100, "channels": 2, "bit_depth": 24 },
   "engine": { "backend": "demucs", "model": "htdemucs_ft",
-              "quality": "balanced", "version": "0.1.0" },
+              "quality": "best", "version": "0.1.0" },
   "stems": [
     { "kind": "vocals", "file": "vocals.wav",
       "peak_dbfs": -1.2, "rms_dbfs": -18.4 }
@@ -307,16 +386,17 @@ sommati dentro `other`, per preservare l'invariante di §10.2.
 ### 5.1.1 L'ottimizzazione che rende conveniente chiedere poco
 
 `htdemucs_ft` non è un modello: è un **insieme di quattro modelli
-specializzati** (uno per sorgente) che vengono eseguiti tutti e poi mediati.
-È da lì che viene la sua qualità superiore, ed è da lì che viene il suo
-costo: quattro inferenze complete.
+specializzati** (un `BagOfModels`, uno fine-tuned per sorgente) che
+vengono eseguiti tutti e combinati con pesi che di fatto assegnano a ogni
+sotto-modello la sua sorgente. È da lì che viene la sua qualità superiore,
+ed è da lì che viene il suo costo: quattro inferenze complete.
 
 **Se l'utente chiede un solo stem base, si esegue soltanto il sotto-modello
 specializzato in quella sorgente.** Chi vuole solo la voce paga circa un
 quarto del tempo, e la ottiene alla stessa qualità — perché il sotto-modello
 della voce è esattamente ciò che rende `htdemucs_ft` buono sulla voce.
 
-Regola di attivazione:
+Regola di attivazione, valida per i preset `fast` e `balanced`:
 
 | Stem base richiesti | Esecuzione |
 |---|---|
@@ -324,16 +404,20 @@ Regola di attivazione:
 | 2 o 3 | i sotto-modelli corrispondenti |
 | 4 | insieme completo, come oggi |
 
+**Nel preset `best` l'insieme completo viene sempre eseguito**, qualunque
+cosa sia stata richiesta. È la traduzione diretta della priorità del
+committente: in `best` non esiste alcuna scorciatoia, nemmeno una
+dimostrabilmente inudibile. Chi vuole la garanzia assoluta la ha; chi
+vuole il lavoro veloce usa `fast`/`balanced` e ottiene la scalabilità.
+
 Il complemento si ricava per sottrazione: `other = mix − stem_richiesti`.
 La sottrazione è esatta, quindi l'invariante di §10.2 regge per costruzione
 — anzi, regge *meglio* del caso completo.
 
 **Verifica obbligatoria** (`tests/integration/test_single_source.py`): lo
 stem prodotto dal solo sotto-modello va confrontato con quello prodotto
-dall'insieme completo. Differenza attesa sotto −25 dBFS RMS. Se emergesse
-una differenza udibile, l'ottimizzazione va limitata al preset `fast` e
-`balanced`, lasciando `best` sempre completo. Non va rimossa: il guadagno
-è troppo grande.
+dall'insieme completo a parità di preset. Differenza attesa sotto
+−25 dBFS RMS. Il test documenta anche il rapporto dei tempi misurati.
 
 Su `htdemucs_6s` questa ottimizzazione **non si applica** — non è un
 insieme, è un modello singolo a sei uscite. Chiedere chitarra o piano costa
@@ -358,6 +442,9 @@ lavorano è già stato ripulito dal primo stadio.
                   ├─ piano                   └─ cymbals
                   └─ other
 ```
+
+I modelli concreti, le fonti e le licenze del secondo stadio sono fissati
+in §5.8.
 
 #### 5.2.1 Batteria → kick / snare / toms / hihat / cymbals
 
@@ -408,6 +495,8 @@ colpa del secondo.
 
 Il punto di questa sezione: **chiedere una traccia sola deve costare una
 frazione di chiedere tutto**, non lo stesso tempo con meno file in uscita.
+Su una macchina dove "tutto" costa mezz'ora, questa non è
+un'ottimizzazione: è ciò che rende l'app usabile per il lavoro quotidiano.
 
 Il pianificatore riceve gli stem richiesti e produce un piano di esecuzione:
 
@@ -417,31 +506,47 @@ Il pianificatore riceve gli stem richiesti e produce un piano di esecuzione:
    esplicitamente.
 2. **Scelta del modello di 1° stadio** (§5.1): `6s` solo se servono chitarra
    o piano.
-3. **Applicazione di §5.1.1** se i base sono tre o meno e il modello è `ft`.
+3. **Applicazione di §5.1.1** se i base sono tre o meno, il modello è `ft`
+   e il preset non è `best`.
 4. **Elenco delle passate di 2° stadio**, una per stem base coinvolto.
 5. **Stima del tempo** = somma dei costi di ogni passata, dove ogni passata
-   ha un costo misurato e tabellato per device e preset.
+   ha un costo per secondo di audio preso dalla **tabella di calibrazione
+   della macchina** (§8.2.1), mai da costanti scritte nel codice.
 
 Il piano è un oggetto ispezionabile e **testabile senza torch**: dato un
 insieme di stem richiesti, produce un elenco di passate. È il pezzo di
 logica con più casi limite di tutto il progetto e va coperto da test
 unitari esaustivi, non da test di integrazione lenti.
 
-### 5.4 Tempi risultanti — MacBook Air M1, brano 4 min, `balanced`
+### 5.4 Tempi — cosa aspettarsi e cosa è vincolante
 
-| Richiesta | Passate | Tempo |
+**Nessun numero assoluto in questa sezione è un vincolo.** Su Mac Intel i
+tempi dipendono ferocemente da generazione della CPU, numero di core e
+stato termico della macchina. I numeri veri li produce la calibrazione al
+primo avvio (§8.2.1); quelli qui sotto servono solo a dimensionare le
+aspettative durante lo sviluppo.
+
+Ordine di grandezza atteso — Mac Intel quad-core ~2015-2019, brano 4 min,
+preset `balanced`:
+
+| Richiesta | Passate | Ordine di grandezza |
 |---|---|---|
-| solo `vocals` | 1 sotto-modello | **~18 s** |
-| `vocals` + `instrumental` | 1 sotto-modello + sottrazione | ~18 s |
-| `vocals` + `drums` | 2 sotto-modelli | ~32 s |
-| i 4 base | insieme completo | ~60 s |
-| i 6 base (con chitarra/piano) | `6s`, passata singola | ~45 s |
-| 4 base + split batteria | completo + 1 | ~70 s |
-| 4 base + split batteria + lead/cori + de-riverbero | completo + 3 | **~85 s** |
+| solo `vocals` | 1 sotto-modello | minuti (pochi) |
+| `vocals` + `instrumental` | 1 sotto-modello + sottrazione | come sopra |
+| `vocals` + `drums` | 2 sotto-modelli | ~2× il caso singolo |
+| i 4 base | insieme completo | ~4× il caso singolo |
+| i 6 base (con chitarra/piano) | `6s`, passata singola | fra 1× e 4× |
+| 4 base + tutti i derivati | completo + 3 passate corte | poco più del completo |
+| qualsiasi cosa in `best` | insieme completo, shifts=2 | **~3× il `balanced` completo** — anche ore, ed è accettato |
 
-Il rapporto fra il minimo e il massimo è quasi **1 a 5**. È l'obiettivo O7,
-ed è ciò che rende l'app usabile sia per un lavoro veloce che per una resa
-completa.
+**Ciò che è vincolante** (verificato in §6.3): il rapporto fra la
+richiesta minima (`vocals` in `balanced`) e la massima (tutto in
+`balanced`) deve restare vicino a 1:4 in tempo misurato. Se la scalabilità
+si perde, O7 è violato e la build fallisce.
+
+Alla chiusura di M1 la tabella va **riempita con i tempi misurati sul Mac
+Intel di riferimento** e riportata nel README, così l'utente sa cosa
+aspettarsi prima ancora di aprire l'app.
 
 ### 5.5 Contratto `Backend`
 
@@ -460,10 +565,16 @@ class Backend(Protocol):
     ) -> dict[StemKind, Tensor]: ...
 ```
 
-Due punti non negoziabili:
+Tre punti non negoziabili:
 
-- `should_cancel` va consultato **fra un chunk e l'altro**, non solo a fine
-  brano. Annullare deve avere effetto entro un secondo.
+- **La garanzia di annullamento entro 1 secondo la dà l'uccisione del
+  processo figlio** (D2), non questo contratto: su CPU un singolo segmento
+  può richiedere più di un secondo di calcolo, quindi nessun controllo
+  cooperativo può garantire quella latenza.
+- `should_cancel` va comunque consultato **fra un segmento e l'altro**:
+  serve alla terminazione *pulita* (nessun file parziale, nessun tensore
+  orfano) quando l'annullo arriva in un momento comodo. Il kill resta il
+  paracadute, non il percorso normale.
 - `on_progress` riceve 0.0–1.0 monotòno crescente. Mai all'indietro.
 
 ### 5.6 Preset qualità
@@ -473,24 +584,35 @@ Due punti non negoziabili:
 class Quality:
     overlap: float
     shifts: int
-    half: bool
+    half: bool           # solo CUDA; su CPU sempre False
     segment_s: float | None
 ```
 
-| Preset | overlap | shifts | fp16 | segment | Uso |
-|---|---|---|---|---|---|
-| `fast` | 0.05 | 0 | sì | 7.8 | anteprima, batch |
-| `balanced` | 0.10 | 0 | sì | 7.8 | **default** |
-| `best` | 0.25 | 2 | no | 7.8 | consegna finale |
+| Preset | overlap | shifts | segment | Uso |
+|---|---|---|---|---|
+| `fast` | 0.05 | 0 | 7.8 | anteprima, batch esplorativo |
+| `balanced` | 0.10 | 0 | 7.8 | lavoro veloce con scalabilità §5.1.1 |
+| `best` | 0.25 | 2 | 7.8 | **default** — consegna, nessuna scorciatoia |
 
 Perché questi numeri:
 
-- **`shifts` è la leva peggiore che esista.** Ogni shift è un'inferenza
-  completa in più per una frazione di dB. Default 0. Sta solo in `best`.
+- **Il default è `best`.** Priorità del committente: la qualità prima del
+  tempo. Chi apre l'app e preme Separa senza toccare nulla ottiene il
+  massimo che i modelli sanno dare, con la stima onesta dell'attesa
+  davanti agli occhi (§8.2.1). `balanced` esiste per chi ha fretta e lo
+  sceglie consapevolmente.
+- **`shifts=2` sta solo in `best`.** Ogni shift è un'inferenza completa in
+  più per una frazione di dB: in `best` quella frazione la vogliamo, negli
+  altri preset sarebbe tempo rubato alla scalabilità.
 - **`overlap` oltre 0.25 non serve a niente**, e sotto 0.05 iniziano a
   sentirsi le giunzioni. Il costo è lineare.
-- **fp16 solo su GPU/MPS.** Su CPU è emulato e più lento: forzarlo a
-  `False` quando `device == "cpu"`, ignorando il preset.
+- **`half` (fp16) è un fatto solo di sviluppo:** vale su CUDA. Sul target
+  (CPU) fp16 è emulato e più lento, quindi è **sempre `False` quando
+  `device == "cpu"`**, qualunque cosa dica il preset. Sul target i preset
+  differiscono solo per `overlap` e `shifts`.
+- **`segment` resta 7.8 anche in `best`:** aumentarlo alza la RAM in modo
+  quadratico e su un Mac Intel da 8 GB fa swappare, che distrugge i tempi
+  senza aggiungere qualità.
 
 ### 5.7 I/O audio — regole
 
@@ -498,53 +620,114 @@ Perché questi numeri:
 2. I modelli girano a **44100 Hz**. Se la sorgente ha un altro sample rate,
    resample in ingresso e **resample indietro in uscita**: l'utente deve
    riavere il suo sample rate originale, o gli stem non si allineeranno una
-   volta trascinati nel progetto.
+   volta trascinati nel progetto. Dopo il round-trip di resampling, ogni
+   stem va **troncato o azzerato-in-coda alla lunghezza esatta in campioni
+   del sorgente**: un resampler può sbagliare di qualche campione, e anche
+   un solo campione di differenza è un bug (§10.2).
 3. Mono in ingresso → duplicato su due canali per il modello → **riscritto
    mono** in uscita.
-4. Scrittura a **24 bit PCM** di default. Mai 16 bit: gli stem hanno
-   headroom bassa e il quantization noise si sente quando li rialzi.
+4. Scrittura a **24 bit PCM** di default, sia WAV che FLAC. Mai 16 bit:
+   gli stem hanno headroom bassa e il quantization noise si sente quando
+   li rialzi.
 5. **Nessuna normalizzazione, nessun limiting, nessun fade.** Se la somma
    degli stem non ricostruisce il mix (entro l'errore del modello), è un
    bug. La DAW è il posto dove si mixa.
-6. File > 15 minuti: elaborare a blocchi con crossfade, per non esaurire la
-   RAM. Limite duro 30 minuti, oltre il quale si rifiuta con messaggio
-   chiaro.
+6. File > 15 minuti: elaborare a blocchi con **overlap-add a finestre
+   complementari** — le due rampe di dissolvenza devono sommare
+   esattamente a 1 in ogni campione della zona di sovrapposizione
+   (rampe lineari complementari: `w` e `1-w`). Un crossfade generico
+   (es. equal-power) non somma a 1 e romperebbe l'invariante di §10.2
+   proprio sui file lunghi, dove nessuno esegue mai il test. Limite duro
+   30 minuti, oltre il quale si rifiuta con messaggio chiaro.
+
+### 5.8 Modelli, pesi e licenze — la tabella delle decisioni
+
+Il primo stadio è deciso e senza rischi:
+
+| Uso | Modello | Fonte pesi | Licenza |
+|---|---|---|---|
+| 1° stadio, 4 stem | `htdemucs_ft` | `dl.fbaipublicfiles.com` (remote ufficiale demucs) | MIT |
+| 1° stadio, 6 stem | `htdemucs_6s` | come sopra | MIT |
+
+Per il 2° stadio (M6) e RoFormer (M4) i pesi migliori vengono dalla
+community e le licenze **variano e vanno verificate una per una**. La spec
+fissa i candidati e la procedura, non finge che la scelta sia già chiusa:
+
+| Uso | Candidato primario | Candidato di riserva | Stato licenza |
+|---|---|---|---|
+| Split batteria | modello drum-sep della famiglia Demucs fine-tuned (es. "DrumSep") | LarsNet (Politecnico di Milano) | da verificare; LarsNet è CC BY-NC 4.0 |
+| Lead / cori | modello karaoke MDX/RoFormer della scena UVR | modello BVE UVR | da verificare, molti sono non-commercial |
+| De-riverbero | modello De-Echo/De-Reverb della scena UVR | — | da verificare |
+| RoFormer voce (M4) | BS-RoFormer (checkpoint community ad alto SDR) | Mel-RoFormer | da verificare |
+
+Regole vincolanti:
+
+1. **Selezione a inizio milestone, non in corsa.** All'apertura di M4 e di
+   M6 si fa un A/B su 3 brani reali fra primario e riserva; vince
+   l'ascolto, si verbalizza la scelta nel commit.
+2. **Ogni peso adottato viene fissato con URL a revisione immutabile**
+   (commit hash se hosted su HuggingFace) **e SHA-256 registrato nel
+   codice** accanto agli altri (§9.2). Niente URL "latest".
+3. **Uso personale vs distribuzione.** Finché l'app è per uso personale
+   (firma ad-hoc, §9.3), i pesi non-commercial sono accettabili. La
+   checklist di `notarize.sh` — cioè il percorso di distribuzione a terzi —
+   include un controllo bloccante: nessun peso con licenza non-commercial
+   o non chiara può essere referenziato da una build distribuita.
+4. **RoFormer su CPU Intel è molto più lento di Demucs.** Resta in scope
+   (il committente accetta l'attesa), ma la stima di §8.2.1 deve
+   calibrarlo separatamente: la sua voce di costo non si deriva da quella
+   di Demucs.
 
 ---
 
-## 6. Performance
+## 6. Prestazioni e memoria
 
-### 6.1 Obiettivi misurabili — MacBook Air M1, brano stereo 4 min 44.1 kHz
+Su questo target la parola "prestazioni" cambia significato: non si
+insegue un tetto di secondi, si insegue **non sprecare** e **non
+esaurire la RAM**. Lo spreco si misura; l'attesa legittima no.
 
-| Configurazione | Tetto |
-|---|---|
-| `balanced`, htdemucs_ft, MPS | **60 s** |
-| `fast`, htdemucs, MPS | 25 s |
-| `best`, htdemucs_ft, MPS | 240 s |
-| `balanced`, CPU (fallback) | 300 s |
+### 6.1 Cosa conta, in ordine
 
-Il benchmark è in `tests/integration/test_perf.py`, salta se non su Apple
-Silicon, e **fallisce** se un tetto viene superato del 25%.
-
-### 6.2 Cosa fare, in ordine di resa
-
-1. **MPS invece di CPU** — 5–8x. La singola cosa che conta di più.
-2. **fp16** — ~1.8x, nessuna perdita udibile.
-3. **`shifts=0`** — evita di moltiplicare per 3 il tempo.
-4. **`overlap` 0.25 → 0.10** — ~1.6x.
-5. **Caricare il modello una volta sola** in batch. In un job da 20 file il
-   caricamento ripetuto è metà del tempo totale.
-6. **Decodifica del file successivo mentre il corrente è in inferenza** —
+1. **Eseguire solo ciò che è stato chiesto** (§5.1.1 + pianificatore).
+   Sul target è la differenza fra minuti e mezz'ore: è la leva numero uno
+   e non ha costi di qualità nei preset dove si applica.
+2. **Caricare ogni modello una volta sola** per l'intero job, batch
+   compreso. In un batch da 20 file il caricamento ripetuto è metà del
+   tempo totale.
+3. **Disciplina di RAM.** fp32 su CPU con l'insieme `ft`: caricare i
+   sotto-modelli **in sequenza, uno alla volta**, liberando i tensori del
+   precedente prima di caricare il successivo. Un Mac Intel da 8 GB che
+   swappa è l'unico modo di trasformare "lento ma va" in "non finisce
+   mai".
+4. **Decodifica del file successivo mentre il corrente è in inferenza** —
    utile solo su batch, ~5%. Farlo per ultimo.
 
-### 6.3 Cosa NON fare
+### 6.2 Cosa NON fare
 
-- Non mettere `torch.compile`: su MPS costa più in compilazione di quanto
-  restituisca su un brano solo.
+- Non mettere `torch.compile`: su torch 2.2/CPU costa più in compilazione
+  di quanto restituisca su un brano solo.
 - Non aumentare `segment` per "andare più veloce": alza la RAM in modo
   quadratico e su 8 GB fa swappare, che è molto peggio.
-- Non parallelizzare due brani sulla stessa GPU: si contendono la memoria e
-  vanno entrambi più piano della somma in serie.
+- Non parallelizzare due brani: si contendono core e memoria e vanno
+  entrambi più piano della somma in serie. Vale su CPU ancora più che su
+  GPU.
+- Non forzare fp16 su CPU (§5.6): è emulato, più lento e senza benefici.
+- Non "ottimizzare" tagliando `shifts` o `overlap` in `best`: la lentezza
+  di `best` è un costo accettato, non un difetto da correggere.
+
+### 6.3 Benchmark — che cosa fallisce la build e che cosa no
+
+`tests/integration/test_perf.py`, con `device=cpu` su qualunque macchina:
+
+- **Vincolante — scalabilità (O7):** tempo di (`vocals`, `balanced`)
+  diviso tempo di (4 base, `balanced`) deve stare sotto **0.35**. È un
+  rapporto, quindi è significativo anche sul dev-box.
+- **Vincolante — nessuna regressione relativa:** i rapporti fra i preset
+  (`fast` < `balanced` < `best`) devono rispettare l'ordine e restare
+  entro il 25% dei rapporti registrati alla baseline.
+- **Informativo — tempi assoluti:** misurati e stampati nel report, mai
+  causa di fallimento. I valori misurati sul Mac Intel di riferimento
+  vanno copiati nel README a ogni release.
 
 ---
 
@@ -554,7 +737,7 @@ Silicon, e **fallisce** se un tetto viene superato del 25%.
 
 Un plugin gira nel thread audio della DAW, con un budget di pochi
 millisecondi per buffer e il divieto assoluto di allocare memoria. La
-separazione neurale richiede **decine di secondi** e gigabyte di RAM. Non è
+separazione neurale richiede **minuti** e gigabyte di RAM. Non è
 una limitazione dell'implementazione: è incompatibilità di natura. Ogni
 prodotto che offre separazione "in un plugin" in realtà fa esattamente
 quello che facciamo qui — elabora offline e consegna file.
@@ -638,6 +821,8 @@ rendere quel legame evidente senza spiegarlo a parole.
 **Riga 0 — le due scorciatoie**, in cima, grandi:
 `Tutto` e `Solo voce`. Sono gli estremi che si usano il 90% delle volte:
 la resa completa e il lavoro veloce. Un click, non sei.
+`Solo voce` imposta anche il preset su `balanced`: è la scorciatoia del
+lavoro veloce, e la scalabilità di §5.1.1 vive lì. `Tutto` lascia `best`.
 
 **Blocco 1 — Strumenti.** Sette card: voce, batteria, basso, chitarra,
 piano, altro, strumentale. Icona, nome, checkbox.
@@ -654,20 +839,34 @@ distinta dalle altre.
 I due blocchi a fisarmonica restano **chiusi di default**: chi vuole i
 quattro stem classici non deve nemmeno vederli.
 
-**In fondo** due soli controlli: **preset qualità** e **formato**.
+**In fondo** due soli controlli: **preset qualità** (default `best`) e
+**formato**.
 
-#### 8.2.1 La stima del tempo
+#### 8.2.1 La stima del tempo — onesta perché calibrata
 
 Sempre visibile, in basso, aggiornata dal vivo a ogni spunta. Viene dal
 pianificatore (§5.3), non da una formula approssimata nell'UI: è la somma
 reale delle passate che verranno eseguite.
+
+I costi unitari (secondi di calcolo per secondo di audio, per modello e
+per preset) **non sono costanti nel codice**: le macchine Intel variano
+troppo. Al primo avvio, dopo il download dei pesi, `engine/calibrate.py`
+esegue un micro-benchmark (~10 s di audio sintetico attraverso il
+sotto-modello vocals e una passata di 2° stadio se installata) e salva la
+tabella dei costi in
+`~/Library/Application Support/StemForge/calibration.json`. Ogni job
+completato aggiorna la tabella con una media mobile: la stima migliora
+con l'uso.
 
 - **Deve scendere quando si toglie roba**, e visibilmente. È il feedback che
   insegna all'utente che chiedere meno costa meno — senza quel feedback,
   l'ottimizzazione di §5.1.1 esiste ma nessuno la sfrutta.
 - Va **sovrastimata del 15%**: finire prima del previsto è un piacere, dopo
   è un difetto.
-- Accanto, il numero di passate in chiaro: *"~18 s · 1 passata"*.
+- Accanto, il numero di passate in chiaro: *"~14 min · 4 passate"*.
+- Con il default `best` su un Mac vecchio la stima dirà anche "più di
+  un'ora". **Va mostrata lo stesso, senza eufemismi**: è la scelta O5.
+  L'utente che la trova eccessiva ha `balanced` a un click di distanza.
 
 ### 8.3 Schermata 3 — Avanzamento
 
@@ -678,7 +877,8 @@ reale delle passate che verranno eseguite.
   molto più corte della prima e una barra che le trattasse alla pari
   sembrerebbe bloccata all'inizio e poi scattante alla fine.
 - Tempo rimanente, aggiornato ogni 2 s, con media mobile per non farlo
-  saltellare.
+  saltellare. Su attese lunghe (oltre 10 min) mostrare anche l'orario
+  previsto di fine: *"~35 min — pronto verso le 15:40"*.
 - **Pulsante Annulla sempre attivo**, che uccide il processo figlio entro
   1 secondo e ripulisce i file parziali.
 
@@ -715,18 +915,35 @@ Questa è la schermata che conta, perché è quella da cui si trascina.
 
 PyInstaller, `packaging/stemforge.spec`:
 
-- **`target_arch = "arm64"`.** Universal2 richiede una toolchain doppia per
-  torch e non ne vale la pena: l'utente è su Apple Silicon.
+- **`target_arch = "x86_64"`.** Il target è il Mac Intel. Universal2
+  resta escluso: richiederebbe una toolchain doppia per torch — che per
+  arm64 avrebbe comunque versioni diverse, visto il pin 2.2.2 — e non
+  serve a nessuno degli utenti previsti. Bonus non garantito: un `.app`
+  x86_64 gira anche su Apple Silicon via Rosetta 2, ma non è un target
+  supportato né testato.
 - Escludere `matplotlib`, `tkinter`, `IPython`, `pytest` e ogni backend Qt
   non usato. Senza esclusioni il bundle passa 1 GB.
 - `.app` con `Info.plist` che dichiara i tipi di file audio in
   `CFBundleDocumentTypes`, così "Apri con" funziona dal Finder.
+- `LSMinimumSystemVersion = 12.0`. Nota di contesto: Apple sta chiudendo
+  il supporto Intel (macOS 26 è l'ultima major per Intel). Non cambia
+  nulla per la v1 — l'app gira offline e continuerà a girare — ma è il
+  motivo per cui §13.2 (CoreML) su questo target non promette molto:
+  senza Neural Engine, CoreML girerebbe comunque su CPU.
 
 ### 9.2 I pesi dei modelli
 
 **Non impacchettare i pesi nell'app** (htdemucs_ft è ~700 MB in quattro
 file). Scaricarli al primo avvio, con barra di avanzamento e destinazione
 `~/Library/Application Support/StemForge/models/`.
+
+Fonti di download:
+
+- Pesi Demucs: il **remote ufficiale** (`dl.fbaipublicfiles.com`), stesso
+  usato dal pacchetto demucs. URL completi fissati nel codice.
+- Pesi di 2° stadio e RoFormer: URL a **revisione immutabile** secondo le
+  regole di §5.8 — mai un link "latest", mai un link a un file che il
+  proprietario del repo può sostituire in silenzio.
 
 Verificare **SHA-256** di ogni file scaricato contro una lista fissata nel
 codice. Un peso corrotto a metà download deve essere riconosciuto e
@@ -737,18 +954,25 @@ connessione **una sola volta**, poi l'app è offline per sempre.
 
 ### 9.3 Firma
 
-Per uso personale basta `codesign --force --deep --sign -` (ad-hoc), poi
-click destro → Apri la prima volta.
+Per uso personale basta la firma ad-hoc, poi click destro → Apri la prima
+volta. **Niente `--deep`**: è deprecato e inaffidabile su bundle con
+centinaia di dylib come quelli PyInstaller. Si passa l'identità a
+PyInstaller (`codesign_identity` nello spec file), che firma la gerarchia
+dall'interno verso l'esterno; per l'ad-hoc, identità `-`.
 
 Per distribuire a terzi serve un Apple Developer Program (99 $/anno):
-`codesign` con Developer ID, hardened runtime, `entitlements.plist` con
+Developer ID, hardened runtime, `entitlements.plist` con
 `com.apple.security.cs.allow-unsigned-executable-memory` (torch ne ha
 bisogno), poi `notarytool submit --wait` e `stapler staple`.
-`packaging/notarize.sh` va scritto ma **non** invocato dalla build di default.
+`packaging/notarize.sh` va scritto ma **non** invocato dalla build di
+default, e include il controllo licenze di §5.8 punto 3: una build con
+pesi non-commercial non può uscire da quella porta.
 
 ### 9.4 Primo avvio
 
-Sequenza: controllo pesi → download se mancano → finestra principale.
+Sequenza: controllo pesi → download se mancano → **calibrazione**
+(§8.2.1, con una riga di spiegazione: "Misuro la velocità di questo Mac
+per darti stime oneste") → finestra principale.
 Mai una finestra vuota mentre si scaricano 700 MB in silenzio.
 
 ---
@@ -770,8 +994,8 @@ Mai una finestra vuota mentre si scaricano 700 MB in silenzio.
 | File audio corrotto | salta, messaggio con nome file, continua il batch |
 | Formato non supportato | rifiuta al drop, non a metà elaborazione |
 | Traccia silenziosa (< −60 dBFS) | scrive comunque, avvisa "quasi silenzioso" |
-| RAM esaurita su MPS | ricade su CPU **automaticamente**, avvisa, continua |
-| Disco pieno | controlla lo spazio **prima** di iniziare, stima 4× la durata |
+| RAM esaurita | messaggio chiaro: chiudere altre app o usare `fast`; il job si può rilanciare |
+| Disco pieno | controlla lo spazio **prima** di iniziare; la stima viene dal piano: `n_stem_scritti × durata × byterate` (24 bit stereo ≈ 15 MB/min per stem) + 20% di margine, non un fattore fisso |
 | Annulla a metà | uccide il figlio, cancella i parziali, torna alla schermata 2 con le scelte intatte |
 | Modello non scaricabile | messaggio con causa di rete, riprovabile |
 | Brano > 30 min | rifiuta con motivazione esplicita |
@@ -791,7 +1015,9 @@ classe di bug più insidiosa.
 
 Verificare anche: **lunghezza in campioni identica** al sorgente (uno
 sfasamento di anche un solo campione manda fuori sync lo stem una volta
-trascinato nel progetto), e sample rate identico.
+trascinato nel progetto), e sample rate identico. La verifica di
+lunghezza va fatta anche su un fixture a **48000 Hz**, per coprire il
+round-trip di resampling di §5.7 punto 2.
 
 L'invariante vale **a ogni livello dell'albero**: se sono stati prodotti
 kick, snare, toms, hi-hat e cymbals, la loro somma più il residuo deve
@@ -801,19 +1027,23 @@ de-riverbero (§5.2.3), che va testato sulla versione `_wet`.
 ### 10.3 Unitari e integrazione
 
 Unitari senza torch, veloci: `model/`, `manifest`, `device`, parsing CLI,
-naming e collisioni di cartella. Tempo totale **< 5 secondi**.
+naming e collisioni di cartella, protocollo JSON del worker. Tempo totale
+**< 5 secondi**.
 
 **Il pianificatore (§5.3) va coperto in modo esaustivo**, ed è il test
 unitario più importante del progetto perché è dove si annidano i casi
 limite: chiedere `kick` senza `drums`; chiedere `lead_vocals` con
 `dereverb` attivo; chiedere solo `instrumental`; chiedere un derivato di
-`drums` e uno di `vocals` insieme; chiedere tutto. Per ognuno si verifica
-il modello di 1° stadio scelto, l'elenco esatto delle passate, e quali file
-finiscono su disco. Gira senza torch, in millisecondi.
+`drums` e uno di `vocals` insieme; chiedere tutto; **chiedere un solo stem
+in `best` e verificare che il piano usi l'insieme completo** (§5.1.1);
+lo stesso in `balanced` e verificare che usi il sotto-modello. Per ognuno
+si verifica il modello di 1° stadio scelto, l'elenco esatto delle passate,
+e quali file finiscono su disco. Gira senza torch, in millisecondi.
 
 Integrazione: pipeline completa con backend finto (< 10 s); pipeline con
 Demucs reale marcata `@pytest.mark.slow`; annullamento che uccide il
-processo entro 1 s senza lasciare parziali.
+processo entro 1 s senza lasciare parziali; benchmark di scalabilità
+(§6.3).
 
 Il drag & drop non è testabile in automatico: è verifica manuale, ed è il
 criterio di uscita di M3 (§12).
@@ -857,23 +1087,29 @@ successivo senza aver soddisfatto il precedente.**
 
 ### M1 — Il motore
 
-`model/`, `engine/` (incluso `planner.py`), `export/folder.py`, `cli.py`.
-Nessuna UI.
+`model/`, `engine/` (incluso `planner.py` e `calibrate.py`),
+`export/folder.py`, `cli.py`. Nessuna UI.
 
-> **Uscita:** `stemforge brano.mp3 --stems vocals,drums,bass,other` produce
-> quattro WAV corretti; l'invariante di ricostruzione (§10.2) passa; il
-> tetto di 60 s (§6.1) è rispettato. **E inoltre:**
-> `stemforge brano.mp3 --stems vocals` finisce in **meno di 25 s**,
-> dimostrando che §5.1.1 funziona, con lo stem indistinguibile da quello
-> prodotto dall'insieme completo.
+> **Uscita:** `stemforge brano.mp3 --stems vocals,drums,bass,other`
+> produce quattro WAV corretti; l'invariante di ricostruzione (§10.2)
+> passa, anche sul fixture a 48 kHz. **E inoltre:**
+> `stemforge brano.mp3 --stems vocals --quality balanced` esegue **una
+> sola passata** (verificato dal piano e dal log) con un tempo misurato
+> sotto **0.35×** quello dei quattro stem (§6.3), e lo stem risultante
+> differisce da quello dell'insieme completo per meno di −25 dBFS RMS
+> (§5.1.1). I tempi assoluti vengono misurati sul Mac Intel di
+> riferimento e riportati nel README (§5.4) — sono documentazione, non
+> criterio di passaggio.
 
 ### M2 — App standalone
 
-`worker/`, `ui/`, quattro schermate, packaging PyInstaller.
+`worker/`, `ui/`, quattro schermate, packaging PyInstaller x86_64.
 
-> **Uscita:** un `.app` che si apre con doppio click su un Mac pulito, senza
-> Python installato, separa un brano e mostra i risultati. Annulla funziona
-> entro 1 s.
+> **Uscita:** un `.app` che si apre con doppio click su un Mac Intel
+> pulito, senza Python installato, esegue la calibrazione al primo avvio,
+> separa un brano e mostra i risultati. Annulla funziona entro 1 s. La
+> stima mostrata prima di partire non viene superata (con il margine del
+> 15% di §8.2.1).
 
 ### M3 — Drag & drop
 
@@ -888,22 +1124,26 @@ Trascinamento singolo e multiplo, feedback visivo, rivelazione nel Finder.
 
 ### M4 — Qualità
 
-Backend RoFormer accanto a Demucs.
+Backend RoFormer accanto a Demucs, scelto secondo §5.8.
 
-> **Uscita:** RoFormer batte `htdemucs_ft` in un test A/B in cieco su voce;
-> l'invariante di ricostruzione regge; il preset resta selezionabile.
+> **Uscita:** RoFormer batte `htdemucs_ft` in un test A/B in cieco su
+> voce; l'invariante di ricostruzione regge; il preset resta
+> selezionabile; il suo costo è calibrato separatamente e la stima in UI
+> resta onesta anche quando dice "ore". La licenza del checkpoint scelto
+> è registrata per iscritto (§5.8).
 
 ### M5 — Rifinitura
 
-Batch, preview d'ascolto, notarizzazione.
+Batch, preview d'ascolto, notarizzazione (con il gate licenze di §9.3).
 
-> **Uscita:** 20 brani in coda senza perdite di memoria; app notarizzata
-> che si apre su un Mac di terze parti senza avvisi di sicurezza.
+> **Uscita:** 20 brani in coda senza perdite di memoria e con i modelli
+> caricati una volta sola (§6.1); app notarizzata che si apre su un Mac
+> di terze parti senza avvisi di sicurezza.
 
 ### M6 — Stem derivati
 
 `engine/drumsplit.py`, `vocalsplit.py`, `dereverb.py`, blocchi a
-fisarmonica nell'UI (§8.2).
+fisarmonica nell'UI (§8.2). Modelli scelti secondo la procedura di §5.8.
 
 Ordine di implementazione, dal più redditizio al meno:
 
@@ -916,8 +1156,8 @@ Ordine di implementazione, dal più redditizio al meno:
 > **Uscita:** kick e snare estratti da un brano reale sono utilizzabili
 > singolarmente senza artefatti udibili; l'invariante di ricostruzione
 > regge a due livelli (§10.2); il pianificatore risolve correttamente tutte
-> le combinazioni coperte dai test di §10.3; il tempo dichiarato in §5.4
-> per la richiesta massima è rispettato.
+> le combinazioni coperte dai test di §10.3; le passate di 2° stadio sono
+> calibrate e la stima resta onesta.
 
 **Se uno dei tre non raggiunge una qualità utilizzabile, non si spedisce.**
 Uno stem derivato mediocre è peggio della sua assenza: l'utente lo prova
@@ -930,13 +1170,17 @@ una volta, non funziona, e smette di fidarsi anche del resto.
 **13.1 — Niente separazione in tempo reale.** Mai, con questa
 architettura. Vedi §7.0.
 
-**13.2 — Il C++ non è in questa spec.** Il momento in cui avrà senso è
-quando si vorrà eliminare torch dal bundle esportando i modelli in CoreML:
-l'app scenderebbe da ~1 GB a ~200 MB e partirebbe in un secondo invece che
-in cinque. È un lavoro autonomo, da fare **dopo** M5, non prima. Farlo
-adesso rallenterebbe tutto senza migliorare nulla di percepibile.
+**13.2 — Il C++ non è in questa spec.** L'esportazione dei modelli fuori
+da torch (CoreML o ONNX) ridurrebbe il bundle da ~1 GB a ~200 MB e
+l'avvio da cinque secondi a uno. Ma su Mac Intel non c'è Neural Engine:
+CoreML girerebbe comunque su CPU, quindi il guadagno sarebbe di peso e
+avvio, non di velocità di calcolo. È un lavoro autonomo, da valutare
+**dopo** M5, non prima. Farlo adesso rallenterebbe tutto senza migliorare
+nulla di percepibile.
 
 **13.3 — Windows e Linux non sono target della v1.** Il codice resta
-portabile (nessuna API macOS fuori da `ui/` e `packaging/`), ma packaging,
-firma e test sono solo macOS. Aggiungere Windows dopo M5 è ragionevole;
-farlo prima raddoppia il lavoro di packaging a metà progetto.
+portabile (nessuna API macOS fuori da `ui/` e `packaging/`) — ed è già
+esercitato su Windows ogni giorno, perché lo sviluppo avviene lì (D6) —
+ma packaging, firma e test di consegna sono solo macOS. Aggiungere
+Windows come *target* dopo M5 è ragionevole; farlo prima raddoppia il
+lavoro di packaging a metà progetto.
