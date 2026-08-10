@@ -3,7 +3,12 @@
 
 PY ?= python3.11
 
-.PHONY: dev test test-slow lock-macos build sign notarize clean
+.PHONY: dev test test-slow lock-macos build sign notarize installer clean
+
+# pacchetto inviabile all'utente Mac: zip con doppio-click che costruisce
+# l'app nativamente sul suo Mac (funziona anche dal dev-box Windows)
+installer:
+	python packaging/make_installer.py
 
 dev:
 	$(PY) -m venv .venv

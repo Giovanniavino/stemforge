@@ -1,0 +1,32 @@
+STEMFORGE — INSTALLAZIONE SU MAC
+================================
+
+1. Fai doppio click su "Installa StemForge.command".
+
+   Se macOS dice che arriva da uno sviluppatore non identificato:
+   click DESTRO sul file -> Apri -> Apri. (Solo la prima volta.)
+
+2. Segui il Terminale: l'installer fa tutto da solo.
+   - Se manca Python, scarica quello ufficiale di python.org
+     e ti chiede la password del Mac per installarlo.
+   - Ogni componente scaricato viene verificato con hash SHA-256.
+   - L'app viene COSTRUITA sul tuo Mac: per questo macOS non la
+     bloccherà come "app di sviluppatore sconosciuto".
+
+3. Alla fine trovi StemForge in /Applications.
+   Al primo avvio scarica i modelli di separazione (~1 GB, una sola
+   volta), poi funziona per sempre offline.
+
+Requisiti: Mac Intel con macOS 12 o successivo, connessione a internet
+solo per l'installazione e il primo avvio. (Su Mac Apple Silicon
+funziona tramite Rosetta 2.)
+
+USO IN DUE PAROLE
+-----------------
+Trascina un brano dentro StemForge, spunta gli strumenti che vuoi,
+premi Separa. Poi trascina gli stem direttamente dentro il tuo progetto
+Ableton: una traccia per file, allineati al campione.
+
+La stima del tempo che vedi prima di partire è calibrata sul tuo Mac
+ed è onesta: la qualità massima può richiedere molto tempo, ed è una
+scelta — c'è il preset "Bilanciata" per il lavoro veloce.
