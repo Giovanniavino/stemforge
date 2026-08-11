@@ -1,19 +1,29 @@
 STEMFORGE — INSTALLAZIONE SU MAC
 ================================
 
-1. Fai doppio click su "Installa StemForge.command".
+PER CHI INVIA: manda il file StemForge-Installer.zip COSI' COM'E',
+senza estrarlo prima. Lo zip protegge i permessi dei file; una cartella
+gia' estratta e trasferita via Telegram/AirDrop arriva rotta.
+
+1. Estrai lo zip (doppio click sullo zip).
+
+2. Fai doppio click su "Installa StemForge.command".
 
    Se macOS dice che arriva da uno sviluppatore non identificato:
    click DESTRO sul file -> Apri -> Apri. (Solo la prima volta.)
 
-2. Segui il Terminale: l'installer fa tutto da solo.
+   Se non si apre nemmeno cosi', apri Terminale e incolla:
+     cd [trascina qui la cartella estratta]
+     sh "Installa StemForge.command"
+
+3. Segui il Terminale: l'installer fa tutto da solo.
    - Se manca Python, scarica quello ufficiale di python.org
      e ti chiede la password del Mac per installarlo.
    - Ogni componente scaricato viene verificato con hash SHA-256.
    - L'app viene COSTRUITA sul tuo Mac: per questo macOS non la
      bloccherà come "app di sviluppatore sconosciuto".
 
-3. Alla fine trovi StemForge in /Applications.
+4. Alla fine trovi StemForge in /Applications.
    Al primo avvio scarica i modelli di separazione (~1 GB, una sola
    volta), poi funziona per sempre offline.
 

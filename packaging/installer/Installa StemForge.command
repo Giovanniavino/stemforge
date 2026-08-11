@@ -25,13 +25,28 @@ die() {
     exit 1
 }
 
-cd "$(dirname "$0")"
+# Percorso assoluto dello script PRIMA di qualsiasi cd: regge sia il
+# doppio click sia l'invocazione manuale con percorso relativo.
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
 
 # 3.11 obbligato: PySide6 6.4 (l'ultima Qt per macOS < 11) richiede < 3.12.
 PY_VERSION="3.11.9"
 PY_PKG_URL="https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
 BUILD_ENV="$HOME/Library/Application Support/StemForge/build-env"
-SRC_DIR="$PWD/StemForge"
+
+# Due layout possibili: il pacchetto distribuito (StemForge/ accanto a
+# questo script) o il repo (script in packaging/installer/, sorgenti due
+# livelli sopra). Errore chiaro se non e' nessuno dei due.
+if [ -f "$SCRIPT_DIR/StemForge/requirements-macos-x86_64.lock" ]; then
+    SRC_DIR="$SCRIPT_DIR/StemForge"
+elif [ -f "$SCRIPT_DIR/../../requirements-macos-x86_64.lock" ]; then
+    SRC_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+else
+    die "sorgenti di StemForge non trovati accanto all'installer.
+Estrai TUTTO lo zip (non solo questo file) e rilancia lo script
+dalla cartella estratta."
+fi
 
 # ---------------------------------------------------------------- 1. il Mac
 say "Controllo questo Mac"
@@ -87,11 +102,23 @@ rm -rf "$BUILD_ENV"
 PYBIN="$BUILD_ENV/bin/python"
 "$PYBIN" -m pip install --quiet --upgrade pip || die "aggiornamento di pip non riuscito."
 
-say "Scarico le dipendenze (ogni pacchetto e' verificato con hash SHA-256)"
-"$PYBIN" -m pip install --quiet --require-hashes -r "$SRC_DIR/requirements-macos-x86_64.lock" \
-    || die "installazione dipendenze non riuscita. Controlla la connessione e riprova."
-"$PYBIN" -m pip install --quiet setuptools wheel "pyinstaller>=6.6,<7" || die "strumenti di build non installabili."
-"$PYBIN" -m pip install --quiet "$SRC_DIR" --no-deps --no-build-isolation || die "installazione di StemForge non riuscita."
+say "Scarico le dipendenze (~1 GB: possono volerci DECINE DI MINUTI, il progresso e' visibile qui sotto)"
+[ -f "$SRC_DIR/requirements-macos-x86_64.lock" ] \
+    || die "file requirements-macos-x86_64.lock mancante in $SRC_DIR: il pacchetto e' incompleto, riscarica lo zip."
+# --only-binary :all: = questo Mac non deve MAI compilare codice nativo.
+# Le tre eccezioni sono Python puro pubblicato solo come sdist (elenco
+# allineato con ALLOW_SDIST_ONLY in gen_macos_lock.py).
+"$PYBIN" -m pip install --require-hashes \
+    --only-binary :all: --no-binary antlr4-python3-runtime,demucs,dora-search \
+    -r "$SRC_DIR/requirements-macos-x86_64.lock" \
+    || die "installazione dipendenze non riuscita.
+Se vedi errori di rete, controlla la connessione e rilancia.
+Se vedi 'Building wheel' o errori di compilazione, NON e' colpa tua:
+manda a chi ti ha dato questo pacchetto le ultime 30 righe qui sopra."
+"$PYBIN" -m pip install --quiet setuptools wheel "pyinstaller>=6.6,<7" \
+    || die "strumenti di costruzione non installabili (probabile problema di rete: riprova)."
+"$PYBIN" -m pip install --quiet "$SRC_DIR" --no-deps --no-build-isolation \
+    || die "installazione di StemForge dai sorgenti non riuscita: manda le righe qui sopra a chi ti ha dato il pacchetto."
 
 # ------------------------------------------------------------ 4. build .app
 say "Costruisco StemForge.app su questo Mac"

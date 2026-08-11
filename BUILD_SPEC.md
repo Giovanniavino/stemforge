@@ -192,7 +192,7 @@ Mac Intel. L'intero stack è pinnato di conseguenza.
 | PyTorch | **== 2.2.2** | ultima con wheel macOS x86_64 (dichiarano 10.9+); non alzare mai senza cambiare target |
 | torchaudio | **== 2.2.2** | pari a torch (wheel 10.13+) |
 | numpy | **>= 1.26, < 2** | torch 2.2 è compilato contro numpy 1.x; numpy 2 lo rompe |
-| demucs | >= 4.0.1 | verificato compatibile con torch 2.2 |
+| demucs | **== 4.0.1** | la 4.1 aggiunge `sphn` (Rust, senza wheel mac x86_64/cp311): sul target forzerebbe una build da sorgente. Verificato sul campo l'11-08-2026 |
 | soundfile | >= 0.12 | I/O, richiede libsndfile |
 | PySide6 | **== 6.4.3** sul target | ultima Qt che gira su macOS < 11; sul dev-box ammessa recente, API comuni |
 | pytest | >= 8 | |

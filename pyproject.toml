@@ -14,7 +14,10 @@ dependencies = [
     "torch==2.2.2",
     "torchaudio==2.2.2",
     "numpy>=1.26,<2",
-    "demucs>=4.0.1",
+    # ==4.0.1 e non >=: la 4.1 ha aggiunto la dipendenza sphn (Rust, senza
+    # wheel per mac x86_64/cp311) che sul Mac target forza una build da
+    # sorgente con toolchain Rust+CMake. Verificato sul campo l'11-08-2026.
+    "demucs==4.0.1",
     "soundfile>=0.12",
 ]
 
