@@ -33,6 +33,7 @@ class MainWindow(QMainWindow):
         self._current_job: SeparationJob | None = None
         self._failures: list[str] = []
         self._warnings: list[str] = []
+        self._preparing = False
 
         self._bridge = WorkerBridge(self)
         self._stack = QStackedWidget()
@@ -63,17 +64,16 @@ class MainWindow(QMainWindow):
         if planning.prepared_marker().exists():
             self._show_drop()
             return
+        self._preparing = True
         self._progress.reset()
         self._progress.cancel_button.setVisible(False)
         self._stack.setCurrentWidget(self._progress)
-        self._bridge.done.connect(self._on_prepare_done)
         self._bridge.start_prepare()
 
-    def _on_prepare_done(self, _out: str, _manifest: str) -> None:
-        self._bridge.done.disconnect(self._on_prepare_done)
+    def _end_prepare(self) -> None:
+        self._preparing = False
         self._progress.cancel_button.setVisible(True)
         self._progress.stop()
-        self._show_drop()
 
     # -- routing ----------------------------------------------------------
 
@@ -103,7 +103,9 @@ class MainWindow(QMainWindow):
         log.warning("%s", message)
 
     def _on_done(self, out_dir: str, manifest: str) -> None:
-        if not out_dir:  # Done del prepare, gestito altrove
+        if self._preparing:
+            self._end_prepare()
+            self._show_drop()
             return
         self._progress.stop()
         notes = list(self._warnings)
@@ -116,9 +118,23 @@ class MainWindow(QMainWindow):
     def _on_failed(self, message: str, detail: str) -> None:
         self._progress.stop()
         log.error("job fallito: %s\n%s", message, detail)
+        if self._preparing:
+            # il primo avvio fallito NON blocca l'app: si mostra la drop
+            # zone con il motivo, e la preparazione riparte al prossimo
+            # avvio perché il marker non esiste (§9.4, §10.1)
+            self._end_prepare()
+            self._drop.show_error(message)
+            self._show_drop()
+            return
         self._failures.append(message)
         if self._queue:
             self._start_next_in_queue()
+            return
+        if self._current_job is None:
+            # errore senza nessun job in corso: il picker non ha un file,
+            # sarebbe un vicolo cieco — si va alla drop zone
+            self._drop.show_error(message)
+            self._show_drop()
             return
         # niente in coda: si torna alla scelta con le opzioni intatte (§10.1)
         self._picker.set_source_error(message)

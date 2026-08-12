@@ -33,11 +33,14 @@ class WorkerBridge(QObject):
     failed = Signal(str, str)  # messaggio utente, dettaglio per il log
     cancelled = Signal()
 
+    _STDERR_TAIL = 16_384  # basta per un traceback completo nel log
+
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._process: QProcess | None = None
         self._out_dir: Path | None = None
         self._buffer = ""
+        self._stderr_tail = ""
         self._cancelling = False
 
     # -- avvio ------------------------------------------------------------
@@ -61,7 +64,9 @@ class WorkerBridge(QObject):
         process.setProgram(command[0])
         process.setArguments(command[1:] + extra_args)
         process.readyReadStandardOutput.connect(self._on_stdout)
+        process.readyReadStandardError.connect(self._on_stderr)
         process.finished.connect(self._on_finished)
+        self._stderr_tail = ""
         process.start()
         return process
 
@@ -92,6 +97,14 @@ class WorkerBridge(QObject):
             if message is not None:
                 self._dispatch(message)
 
+    def _on_stderr(self) -> None:
+        # senza questo, il traceback di un crash duro del figlio sparirebbe:
+        # e' l'unica prova di cosa e' successo davvero (§10.1)
+        assert self._process is not None
+        raw = self._process.readAllStandardError()
+        self._stderr_tail += bytes(raw).decode("utf-8", errors="replace")
+        self._stderr_tail = self._stderr_tail[-self._STDERR_TAIL:]
+
     def _dispatch(self, message: protocol.Message) -> None:
         if isinstance(message, protocol.Started):
             self._out_dir = Path(message.out_dir)
@@ -117,10 +130,13 @@ class WorkerBridge(QObject):
             return
         if exit_code not in (0, None):
             # se il figlio è morto senza un messaggio Error (crash duro)
+            detail = f"exit code {exit_code}"
+            if self._stderr_tail.strip():
+                detail += "\n--- stderr del worker ---\n" + self._stderr_tail
             self.failed.emit(
                 "Il processo di separazione si è interrotto. "
                 "Riprova; se succede ancora, guarda il log.",
-                f"exit code {exit_code}",
+                detail,
             )
 
     def _cleanup_partials(self) -> None:

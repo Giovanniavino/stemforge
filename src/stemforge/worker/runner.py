@@ -47,13 +47,39 @@ def _prepare() -> int:
         ))
         device = resolve_device("auto")
         calibrate.first_run_calibration(device)
+        marker = calibrate.calibration_path().parent / "prepared.json"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"models": list(models)}), encoding="utf-8")
     except BackendUnavailable as exc:
         emit(protocol.Error(message=str(exc), detail=traceback.format_exc()))
         return 1
-    marker = calibrate.calibration_path().parent / "prepared.json"
-    marker.write_text(json.dumps({"models": list(models)}), encoding="utf-8")
+    except Exception as exc:
+        # qualunque cosa vada storta qui deve arrivare all'utente come
+        # messaggio, mai come processo morto in silenzio (§10.1)
+        emit(protocol.Error(
+            message=_prepare_message(exc), detail=traceback.format_exc(),
+        ))
+        return 1
     emit(protocol.Done(out_dir="", manifest=""))
     return 0
+
+
+def _prepare_message(exc: Exception) -> str:
+    """Messaggio azionabile per un primo avvio fallito (§10.1)."""
+    import socket
+    import urllib.error
+
+    if isinstance(exc, (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError)):
+        return (
+            "Per il primo avvio serve la connessione a internet (una sola "
+            "volta, per scaricare i modelli). Collegati e riapri StemForge."
+        )
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:  # ENOSPC
+        return "Spazio su disco insufficiente per i modelli (~1 GB): libera spazio e riapri."
+    return (
+        "Preparazione non riuscita: puoi comunque usare l'app, i modelli "
+        "verranno riscaricati al prossimo avvio. Dettagli nel log."
+    )
 
 
 def _user_message(exc: Exception) -> str:

@@ -75,6 +75,10 @@ class DropZone(QWidget):
         frame_layout.addStretch(1)
         layout.addWidget(self._frame)
 
+    def show_error(self, message: str) -> None:
+        """Messaggio inline (es. primo avvio fallito), schermata usabile."""
+        self._message.setText(message)
+
     # -- drag & drop in ingresso ------------------------------------------
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:

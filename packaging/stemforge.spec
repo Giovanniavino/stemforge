@@ -10,6 +10,8 @@ Da eseguire SUL MAC: pyinstaller packaging/stemforge.spec
 
 import os
 
+from PyInstaller.utils.hooks import collect_submodules
+
 CODESIGN_IDENTITY = os.environ.get("STEMFORGE_CODESIGN_IDENTITY", "-")
 
 block_cipher = None
@@ -22,6 +24,13 @@ a = Analysis(
     hiddenimports=[
         "stemforge.worker.runner",
         "soundfile",
+        # demucs carica le classi dei modelli via importlib leggendo i
+        # metadati del checkpoint: l'analisi statica non le vede e senza
+        # di queste il worker muore al caricamento dei pesi
+        *collect_submodules("demucs"),
+        *collect_submodules("julius"),
+        *collect_submodules("openunmix"),
+        *collect_submodules("einops"),
     ],
     hookspath=[],
     runtime_hooks=[],

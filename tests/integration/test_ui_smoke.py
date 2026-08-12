@@ -73,6 +73,30 @@ def test_all_screens_construct(qapp, tmp_path: Path):
     assert rejected == 1
 
 
+def test_prepare_failure_leads_to_usable_drop_zone(qapp, tmp_path: Path):
+    """Regressione dal campo: primo avvio fallito -> l'app resta usabile.
+
+    Prima del fix, il fallimento della preparazione instradava sullo
+    StemPicker senza nessun file impostato: vicolo cieco senza modo di
+    scegliere un brano.
+    """
+    from stemforge.ui.main_window import MainWindow
+
+    window = MainWindow(out_dir=tmp_path)
+    window._preparing = True
+    window._stack.setCurrentWidget(window._progress)
+
+    window._on_failed("Serve la connessione a internet.", "detail")
+
+    assert window._stack.currentWidget() is window._drop
+    assert "connessione" in window._drop._message.text()
+    assert not window._preparing
+
+    # e un errore senza alcun job in corso non porta mai al picker
+    window._on_failed("File corrotto.", "detail")
+    assert window._stack.currentWidget() is window._drop
+
+
 def test_result_view_lists_manifest(qapp, tmp_path: Path, mix_44k, fake_backends):
     from stemforge.model.job import SeparationJob
     from stemforge.ui.result_view import ResultView

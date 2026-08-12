@@ -52,6 +52,12 @@ def main() -> int:
             "Installa StemForge.command",
             executable=True,
         )
+        _add_file(
+            zf,
+            ROOT / "packaging" / "installer" / "Aggiorna StemForge.command",
+            "Aggiorna StemForge.command",
+            executable=True,
+        )
         _add_file(zf, ROOT / "packaging" / "installer" / "LEGGIMI.txt", "LEGGIMI.txt")
         for item in PROJECT_ITEMS:
             _add_file(zf, ROOT / item, f"StemForge/{item}")

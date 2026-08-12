@@ -23,6 +23,10 @@ gia' estratta e trasferita via Telegram/AirDrop arriva rotta.
    - L'app viene COSTRUITA sul tuo Mac: per questo macOS non la
      bloccherà come "app di sviluppatore sconosciuto".
 
+AGGIORNAMENTI: se StemForge e' gia' stato installato una volta su
+questo Mac, usa "Aggiorna StemForge.command" invece dell'installer:
+non riscarica nulla e ci mette pochi minuti.
+
 4. Alla fine trovi StemForge in /Applications.
    Al primo avvio scarica i modelli di separazione (~1 GB, una sola
    volta), poi funziona per sempre offline.
