@@ -19,6 +19,9 @@ dependencies = [
     # sorgente con toolchain Rust+CMake. Verificato sul campo l'11-08-2026.
     "demucs==4.0.1",
     "soundfile>=0.12",
+    # nel bundle PyInstaller mancano i certificati CA di sistema: senza
+    # certifi il download HTTPS dei pesi fallirebbe sul Mac dell'utente
+    "certifi>=2024.2",
 ]
 
 [project.optional-dependencies]

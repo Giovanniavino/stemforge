@@ -42,6 +42,7 @@ class WorkerBridge(QObject):
         self._buffer = ""
         self._stderr_tail = ""
         self._cancelling = False
+        self._error_reported = False
 
     # -- avvio ------------------------------------------------------------
 
@@ -67,6 +68,7 @@ class WorkerBridge(QObject):
         process.readyReadStandardError.connect(self._on_stderr)
         process.finished.connect(self._on_finished)
         self._stderr_tail = ""
+        self._error_reported = False
         process.start()
         return process
 
@@ -118,6 +120,7 @@ class WorkerBridge(QObject):
         elif isinstance(message, protocol.Done):
             self.done.emit(message.out_dir, message.manifest)
         elif isinstance(message, protocol.Error):
+            self._error_reported = True
             self.failed.emit(message.message, message.detail)
 
     def _on_finished(self, exit_code: int, _status: object) -> None:
@@ -128,8 +131,12 @@ class WorkerBridge(QObject):
             self._cleanup_partials()
             self.cancelled.emit()
             return
+        if self._error_reported:
+            # il figlio ha già spiegato cosa è successo: il fallback
+            # generico qui sotto lo SOVRASCRIVEREBBE nell'UI
+            return
         if exit_code not in (0, None):
-            # se il figlio è morto senza un messaggio Error (crash duro)
+            # il figlio è morto senza un messaggio Error (crash duro)
             detail = f"exit code {exit_code}"
             if self._stderr_tail.strip():
                 detail += "\n--- stderr del worker ---\n" + self._stderr_tail

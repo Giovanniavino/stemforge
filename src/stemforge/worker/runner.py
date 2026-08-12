@@ -14,7 +14,7 @@ import traceback
 
 from stemforge.engine import audio_io, calibrate
 from stemforge.engine.contract import BackendUnavailable, CancelledError
-from stemforge.engine.device import resolve_device
+from stemforge.engine.device import ensure_ca_bundle, resolve_device
 from stemforge.model.job import SeparationJob
 from stemforge.worker import protocol
 from stemforge.worker.pipeline import run_job
@@ -98,6 +98,7 @@ def _user_message(exc: Exception) -> str:
 
 def main() -> int:
     """Entry point del figlio: job su stdin, JSON-lines su stdout (D2)."""
+    ensure_ca_bundle()  # prima di qualsiasi download (pesi via HTTPS)
     if "--prepare" in sys.argv:
         return _prepare()
     line = sys.stdin.readline()

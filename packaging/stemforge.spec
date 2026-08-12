@@ -10,7 +10,7 @@ Da eseguire SUL MAC: pyinstaller packaging/stemforge.spec
 
 import os
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 CODESIGN_IDENTITY = os.environ.get("STEMFORGE_CODESIGN_IDENTITY", "-")
 
@@ -20,7 +20,10 @@ a = Analysis(
     ["../src/stemforge/ui/app.py"],
     pathex=["../src"],
     binaries=[],
-    datas=[],
+    # demucs/remote/files.txt e i .yaml: l'indice dei modelli con i
+    # checksum. Senza, get_model() muore con FileNotFoundError prima
+    # ancora di provare a scaricare (visto sul campo, log 12-08-2026).
+    datas=collect_data_files("demucs"),
     hiddenimports=[
         "stemforge.worker.runner",
         "soundfile",

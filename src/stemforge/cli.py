@@ -105,6 +105,9 @@ def _emit_console(message: protocol.Message) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from stemforge.engine.device import ensure_ca_bundle
+
+    ensure_ca_bundle()  # prima di qualsiasi download (pesi via HTTPS)
     args = build_parser().parse_args(argv)
     failures: list[str] = []
     backends: BackendCache = {}

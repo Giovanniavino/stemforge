@@ -97,6 +97,29 @@ def test_prepare_failure_leads_to_usable_drop_zone(qapp, tmp_path: Path):
     assert window._stack.currentWidget() is window._drop
 
 
+def test_bridge_does_not_overwrite_real_error(qapp):
+    """Regressione dal campo: l'Error del worker seguito da exit 1 non
+    deve produrre un secondo `failed` generico che sovrascrive il vero
+    motivo nell'UI."""
+    from stemforge.ui.bridge import WorkerBridge
+    from stemforge.worker import protocol
+
+    bridge = WorkerBridge()
+    received: list[str] = []
+    bridge.failed.connect(lambda message, detail: received.append(message))
+
+    bridge._dispatch(protocol.Error(message="Motivo vero.", detail="tb"))
+    bridge._on_finished(1, None)  # il worker esce con 1 dopo l'Error
+
+    assert received == ["Motivo vero."]
+
+    # un crash duro senza Error mantiene invece il fallback generico
+    bridge._error_reported = False
+    bridge._stderr_tail = "Traceback ..."
+    bridge._on_finished(1, None)
+    assert len(received) == 2 and "interrotto" in received[1]
+
+
 def test_result_view_lists_manifest(qapp, tmp_path: Path, mix_44k, fake_backends):
     from stemforge.model.job import SeparationJob
     from stemforge.ui.result_view import ResultView
