@@ -1,134 +1,135 @@
 <h1 align="center">StemForge</h1>
 
 <p align="center">
-  <em>Separa un brano nelle sue tracce. Trascinale nel progetto che hai già aperto. Fine.</em>
+  <em>Split a song into its tracks. Drag them into the project you already have open. Done.</em>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/platform-macOS%2010.15%2B%20Intel-black" alt="platform">
   <img src="https://img.shields.io/badge/python-3.12-blue" alt="python">
-  <img src="https://img.shields.io/badge/milestone-M1--M3%20completate-brightgreen" alt="milestone">
+  <img src="https://img.shields.io/badge/milestones-M1--M3%20complete-brightgreen" alt="milestones">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
 </p>
 
 ---
 
-Trascina un brano, spunta gli strumenti, premi **Separa**. Poi trascina gli
-stem direttamente nel progetto Ableton — o qualunque DAW — già aperto.
+Drop in a song, tick the instruments you want, hit **Separate**. Then drag
+the stems straight into the Ableton project — or any DAW — you already have
+open.
 
-Niente plugin da installare, niente progetto nuovo da aprire, niente import.
+No plugin to install, no new project to open, no import step.
 
 ```
-  brano.mp3  ─→  scegli gli strumenti  ─→  drag  ─→  il tuo progetto
+  song.mp3  ─→  pick your instruments  ─→  drag  ─→  your project
 ```
 
-## Su che macchine gira
+## What it runs on
 
-Target: **macOS 10.15+ (Catalina), Mac Intel, solo CPU** — va bene anche un
-Mac mini del 2012.
+Target: **macOS 10.15+ (Catalina), Intel Macs, CPU only** — a 2012 Mac mini
+is enough.
 
-La qualità viene prima del tempo: il preset di default è `Massima`, e
-l'attesa — anche lunga — viene dichiarata onestamente prima di partire,
-calibrata sulla velocità del tuo Mac.
+Quality comes before speed: the default preset is `Best`, and the wait —
+however long — is stated honestly up front, calibrated to how fast your Mac
+actually is.
 
-## Installazione
+## Install
 
-Manda all'utente `dist/StemForge-Installer.zip`, rigenerabile con
-`make installer`. Doppio click su **"Installa StemForge.command"** e fa
-tutto da solo.
+Send the user `dist/StemForge-Installer.zip`, regenerated with
+`make installer`. Double-click **"Installa StemForge.command"** and it
+handles the rest.
 
-Al primo avvio l'app scarica i modelli (~1 GB, una volta sola). Dopo di
-quello non tocca più la rete: nessun account, nessuna telemetria.
+On first launch the app downloads the models (~1 GB, once). After that it
+never touches the network again: no account, no telemetry.
 
-## Uso
+## Usage
 
-1. Trascina un brano nella finestra.
-2. Spunta gli strumenti. **La stima del tempo si aggiorna a ogni spunta:
-   chiedere meno costa meno.**
-3. Premi Separa.
-4. A fine corsa seleziona gli stem e trascinali nell'arrangiamento: una
-   traccia per file, allineati al campione.
+1. Drop a song into the window.
+2. Tick the instruments. **The time estimate updates with every tick:
+   asking for less costs less.**
+3. Hit Separate.
+4. When it's done, select the stems and drag them into your arrangement:
+   one track per file, sample-aligned.
 
-Gli stem finiscono in `~/Music/StemForge/<nome brano>/` come WAV 24 bit o
-FLAC, con un `manifest.json` accanto.
+Stems land in `~/Music/StemForge/<song name>/` as 24-bit WAV or FLAC, with
+a `manifest.json` next to them.
 
-### Da riga di comando
+### From the command line
 
 ```bash
-stemforge brano.mp3 --stems vocals,drums,bass,other
-stemforge brano.mp3 --stems vocals --quality balanced   # ~1/4 del tempo
-stemforge brano.mp3 --stems kick,snare --dry-run        # mostra il piano
+stemforge song.mp3 --stems vocals,drums,bass,other
+stemforge song.mp3 --stems vocals --quality balanced   # ~1/4 of the time
+stemforge song.mp3 --stems kick,snare --dry-run        # print the plan
 ```
 
-## Tracce
+## Tracks
 
 **Base** — `vocals` `drums` `bass` `guitar` `piano` `other` `instrumental`
 
-**Derivate** — `kick` `snare` `toms` `hihat` `cymbals` `lead_vocals`
-`backing_vocals`, più il de-riverbero della voce *(in arrivo con M6)*
+**Derived** — `kick` `snare` `toms` `hihat` `cymbals` `lead_vocals`
+`backing_vocals`, plus vocal de-reverb *(landing with M6)*
 
-Preset: `fast`, `balanced`, `best` *(default)*.
+Presets: `fast`, `balanced`, `best` *(default)*.
 
-## Il tempo scala con quello che chiedi
+## Time scales with what you ask for
 
-È la scelta di design che guida il progetto: chiedere una traccia sola deve
-costare una frazione di chiederle tutte, non lo stesso tempo con meno file
-in uscita.
+This is the design choice the whole project is built around: asking for a
+single track should cost a fraction of asking for all of them, not the same
+time with fewer files at the end.
 
-| Macchina | Richiesta (`balanced`) | Tempo |
+| Machine | Request (`balanced`) | Time |
 |---|---|---|
-| dev-box x86 CPU (Windows) | 30 s di audio, solo `vocals` | 23 s |
-| dev-box x86 CPU (Windows) | 30 s di audio, 4 stem | 130 s |
-| Mac Intel di riferimento | *da misurare sul target* | — |
+| x86 CPU dev box (Windows) | 30 s of audio, `vocals` only | 23 s |
+| x86 CPU dev box (Windows) | 30 s of audio, 4 stems | 130 s |
+| Reference Intel Mac | *to be measured on target* | — |
 
-Il rapporto misurato fra "una traccia" e "tutto" è **0.18**. In `best` i
-tempi crescono di circa 10x rispetto a `balanced`: è il prezzo dichiarato
-della qualità massima, e la stima in app lo dice prima di partire.
+The measured ratio between "one track" and "everything" is **0.18**. On
+`best`, times grow roughly 10x over `balanced`: that's the stated price of
+maximum quality, and the in-app estimate says so before you commit.
 
-## Stato
+## Status
 
 | Milestone | |
 |---|---|
-| M1 · motore, pianificatore, CLI | ✅ |
-| M2 · app standalone | ✅ |
+| M1 · engine, planner, CLI | ✅ |
+| M2 · standalone app | ✅ |
 | M3 · drag & drop | ✅ |
-| M4 · qualità (RoFormer) | ⬜ |
-| M5 · rifinitura e notarizzazione | ⬜ |
-| M6 · tracce derivate | ⬜ |
+| M4 · quality (RoFormer) | ⬜ |
+| M5 · polish and notarization | ⬜ |
+| M6 · derived tracks | ⬜ |
 
-## Sviluppo
+## Development
 
 ```bash
-make dev        # venv + dipendenze pinnate (hash verificati)
-make test       # suite veloce (<10 s, senza modelli)
-make test-slow  # con Demucs reale (scarica i pesi)
-make build      # .app x86_64 via PyInstaller (solo su macOS)
+make dev        # venv + pinned dependencies (hash-verified)
+make test       # fast suite (<10 s, no models)
+make test-slow  # with real Demucs (downloads weights)
+make build      # x86_64 .app via PyInstaller (macOS only)
 ```
 
-Su Windows (dev-box): `py -3.12 -m venv .venv` e
+On Windows (dev box): `py -3.12 -m venv .venv` then
 `pip install -r requirements-dev-win.lock`.
 
-La specifica completa, con ogni decisione e la sua ragione, è in
-**[BUILD_SPEC.md](BUILD_SPEC.md)**.
+The full specification, with every decision and the reasoning behind it, is
+in **[BUILD_SPEC.md](BUILD_SPEC.md)**.
 
-Regole dure verificate dai test: nessun file oltre 400 righe, dipendenze in
-una direzione sola, `model/` senza I/O, UI senza engine.
+Hard rules enforced by tests: no file over 400 lines, dependencies flow one
+way only, `model/` does no I/O, the UI never touches the engine.
 
-## Perché non è un plugin VST
+## Why it isn't a VST plugin
 
-Un plugin gira nel thread audio della DAW, con pochi millisecondi per buffer
-e il divieto di allocare memoria. La separazione neurale richiede decine di
-secondi e gigabyte di RAM. Non è un limite dell'implementazione: è
-incompatibilità di natura.
+A plugin runs on the DAW's audio thread, with a few milliseconds per buffer
+and a hard ban on allocating memory. Neural separation needs tens of seconds
+and gigabytes of RAM. That isn't an implementation limit — the two are
+fundamentally incompatible.
 
-Ogni prodotto che offre separazione "dentro un plugin" fa esattamente quello
-che fa StemForge — elabora offline e consegna file.
+Every product offering separation "inside a plugin" does exactly what
+StemForge does: processes offline and hands back files.
 
-## Costruito su
+## Built on
 
-[Demucs](https://github.com/adefossez/demucs) di Alexandre Défossez e Meta
+[Demucs](https://github.com/adefossez/demucs) by Alexandre Défossez and Meta
 AI Research · [PyTorch](https://pytorch.org) · [Qt](https://www.qt.io)
 
-## Licenza
+## License
 
-MIT — vedi [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE).
