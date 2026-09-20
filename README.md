@@ -1,7 +1,7 @@
 <h1 align="center">StemForge</h1>
 
 <p align="center">
-  <em>Split a song into its tracks. Drag them into the project you already have open. Done.</em>
+  <em>Split a song into its tracks. Drag them into the project. Done.</em>
 </p>
 
 <p align="center">
