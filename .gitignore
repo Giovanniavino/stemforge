@@ -20,3 +20,8 @@ stems/
 *.ogg
 *.aif
 *.aiff
+
+# build locali del packaging
+packaging/build/
+packaging/dist/
+gen_lock_err.txt
