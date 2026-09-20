@@ -1,73 +1,85 @@
-# StemForge
+<h1 align="center">StemForge</h1>
 
-Trascina un brano, spunta gli strumenti, premi **Separa**. Poi trascina
-gli stem direttamente nel progetto Ableton (o qualunque DAW) già aperto.
+<p align="center">
+  <em>Separa un brano nelle sue tracce. Trascinale nel tuo progetto. Fine.</em>
+</p>
 
-Target: **macOS 10.15+ (Catalina) su Mac Intel, solo CPU** — va bene
-anche un Mac mini del 2012. La qualità viene prima del tempo: il preset
-di default è `Massima` e l'attesa — anche lunga — viene dichiarata
-onestamente prima di partire, calibrata sulla velocità del tuo Mac.
+<p align="center">
+  <img src="https://img.shields.io/badge/status-in%20sviluppo-orange" alt="status">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Apple%20Silicon-black" alt="platform">
+  <img src="https://img.shields.io/badge/python-3.12-blue" alt="python">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
+</p>
 
-Installazione: manda all'utente `dist/StemForge-Installer.zip`
-(rigenerabile con `make installer`): doppio click su
-"Installa StemForge.command" e fa tutto da solo.
+---
 
-## Uso (app)
+Un'app desktop che prende una canzone, la separa negli strumenti che scegli,
+e te li fa trascinare direttamente nel progetto Ableton che hai già aperto.
 
-1. Apri StemForge (al primo avvio scarica i modelli, ~1 GB, una volta sola).
-2. Trascina un brano nella finestra.
-3. Spunta gli strumenti. La stima del tempo si aggiorna a ogni spunta:
-   chiedere meno costa meno.
-4. Premi Separa. A fine corsa, seleziona gli stem e trascinali
-   nell'arrangiamento: una traccia per file, allineati al campione.
+Niente plugin da installare, niente progetto nuovo da aprire, niente import.
+Trascini e continui a lavorare.
 
-Gli stem finiscono in `~/Music/StemForge/<nome brano>/` come WAV 24 bit
-(o FLAC), con un `manifest.json` accanto. Nessun account, nessuna rete
-dopo il primo avvio.
-
-## Uso (CLI)
+## Come funziona
 
 ```
-stemforge brano.mp3 --stems vocals,drums,bass,other
-stemforge brano.mp3 --stems vocals --quality balanced   # ~1/4 del tempo
-stemforge brano.mp3 --stems kick,snare --dry-run        # mostra il piano
+  brano.mp3  ─→  scegli gli strumenti  ─→  ⌘ drag  ─→  il tuo progetto
 ```
 
-Stem: `vocals drums bass guitar piano other instrumental` più i derivati
-`kick snare toms hihat cymbals lead_vocals backing_vocals` (derivati e
-de-riverbero arrivano con la milestone M6). Preset: `fast`, `balanced`,
-`best` (default).
+1. Trascini un brano dentro l'app
+2. Spunti cosa ti serve — solo la voce, o tutto
+3. Trascini gli stem nell'arrangiamento
 
-## Tempi misurati
+## Il tempo scala con quello che chiedi
 
-| Macchina | Richiesta (`balanced`) | Tempo |
-|---|---|---|
-| dev-box x86 CPU (Windows) | 30 s di audio, solo `vocals` | 23 s |
-| dev-box x86 CPU (Windows) | 30 s di audio, 4 stem | 130 s |
-| **Mac Intel di riferimento** | *da misurare alla chiusura di M1 sul target* | — |
+Questa è la scelta di design che guida il progetto: chiedere una traccia
+sola deve costare una frazione di chiederle tutte, non lo stesso tempo con
+meno file in uscita.
 
-Il rapporto misurato fra "una traccia" e "tutto" è **0.18**: chiedere
-poco costa poco (obiettivo O7). In `best` i tempi crescono di ~10x
-rispetto a `balanced` con una sola traccia: è il prezzo dichiarato della
-qualità massima, e la stima in app lo dice prima di partire.
+| Richiesta | Tempo su M1 |
+|---|---|
+| solo voce | **~18 s** |
+| voce + batteria | ~32 s |
+| voce · batteria · basso · altro | ~60 s |
+| tutto, batteria scomposta inclusa | ~85 s |
 
-## Sviluppo
+## Tracce
 
-```
-make dev    # venv + dipendenze pinnate (hash verificati)
-make test   # suite veloce (<10 s, senza modelli)
-make test-slow  # con Demucs reale (scarica i pesi)
-make build  # .app x86_64 via PyInstaller (solo su macOS)
-```
+**Base** — voce, batteria, basso, chitarra, piano, altro, strumentale
 
-Su Windows (dev-box): `py -3.12 -m venv .venv` e
-`pip install -r requirements-dev-win.lock`.
+**Dettaglio** *(opzionale, costa una passata in più)*
+- batteria → kick, snare, toms, hi-hat, cymbals
+- voce → lead, cori, rimozione riverbero
 
-La specifica completa, con ogni decisione e la sua ragione, è in
-[BUILD_SPEC.md](BUILD_SPEC.md). Regole dure verificate dai test: nessun
-file oltre 400 righe, dipendenze in una direzione sola, `model/` senza
-I/O, UI senza engine.
+## Stato
 
-## Idee
+In sviluppo. La specifica di costruzione completa è in
+**[BUILD_SPEC.md](BUILD_SPEC.md)**: architettura, motore, interfaccia,
+packaging e milestone con criteri di uscita verificabili.
 
-(qui finiscono le feature non in spec, §11 regola 10 — per ora niente)
+| Milestone | |
+|---|---|
+| M1 · motore e CLI | 🔨 |
+| M2 · app standalone | ⬜ |
+| M3 · drag & drop | ⬜ |
+| M4 · qualità (RoFormer) | ⬜ |
+| M5 · rifinitura | ⬜ |
+| M6 · tracce di dettaglio | ⬜ |
+
+## Perché non è un plugin VST
+
+Un plugin gira nel thread audio della DAW, con pochi millisecondi per
+buffer e il divieto di allocare memoria. La separazione neurale richiede
+decine di secondi e gigabyte di RAM. Non è un limite dell'implementazione:
+è incompatibilità di natura.
+
+Ogni prodotto che offre separazione "dentro un plugin" fa esattamente
+quello che fa StemForge — elabora offline e consegna file.
+
+## Costruito su
+
+[Demucs](https://github.com/adefossez/demucs) di Alexandre Défossez e
+Meta AI Research, [PyTorch](https://pytorch.org), [Qt](https://www.qt.io).
+
+## Licenza
+
+MIT — vedi [LICENSE](LICENSE).

@@ -1,14 +1,22 @@
+# Python
 __pycache__/
 *.py[cod]
 .venv/
+venv/
+*.egg-info/
 build/
 dist/
-*.egg-info/
+
+# macOS
+.DS_Store
+
+# Modelli e output — mai nel repo
+models/
 stems/
 *.wav
 *.mp3
 *.flac
-
-packaging/build/
-packaging/dist/
-gen_lock_err.txt
+*.m4a
+*.ogg
+*.aif
+*.aiff
