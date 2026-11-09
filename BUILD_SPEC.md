@@ -3,7 +3,48 @@
 > Documento unico e autosufficiente. Chi implementa non deve chiedere nulla:
 > ogni decisione è già presa qui, con la motivazione accanto.
 
-Versione spec: 2.3 · Target: **macOS 10.15+ (Catalina) su Mac Intel (x86_64), solo CPU** · Data: 2026-08-10
+Versione spec: 3.0 · Target: **quattro profili di build — Mac Intel 10.15+, Mac Apple Silicon 11+, Windows 10/11 x64, Linux x64** (§2) · Data: 2026-11-09
+
+### Changelog 2.3 → 3.0 — "per più persone possibili"
+
+L'app ha girato per mesi sul Mac mini Late 2012 senza problemi. La v3
+la porta a ogni Mac e a Windows e Linux **senza toccare quel profilo**.
+
+- **Profili di build** (nuova D7, §2): `legacy-intel` (il Mac mini,
+  pin invariati), `mac-arm64`, `win-x64`, `linux-x64`. Un lock con hash
+  per profilo, rigenerabile e verificato con un comando.
+- **Un solo motore** per due versioni di torch (2.2.2 e 2.10): le
+  differenze di API vivono in un solo modulo di compatibilità (D7).
+- **Acceleratori validati** (nuova D8): MPS su Apple Silicon si accende
+  in `auto` solo dopo un confronto con la CPU salvato per macchina; se
+  fallisce durante un job si ripiega su CPU. DirectML scartato (§13.3).
+- **FFmpeg LGPL compilato da noi** (nuova D9): le wheel di PyAV portano un
+  FFmpeg GPLv3 (`--enable-gpl`, x264/x265 — verificato il 09-11-2026),
+  incompatibile con il vincolo di licenza. Al suo posto un FFmpeg minimo,
+  solo decodifica audio, configurato LGPL e compilato in CI.
+- **Dati per piattaforma** (§9.2): su Windows `%LOCALAPPDATA%`, mai la
+  parte Roaming del profilo.
+- **Pacchetti per piattaforma** (§9): DMG per i due Mac, installer Inno
+  Setup per Windows, AppImage per Linux; l'installer zip del Mac mini
+  resta. Firma e notarizzazione automatiche se ci sono le credenziali.
+- **Collaudo del pacchetto** (§10.5): `StemForge --selftest` gira
+  sull'app impacchettata in CI prima di ogni pubblicazione.
+- **Interfaccia per tutti** (§8.6): italiano e inglese, tastiera, screen
+  reader, contrasto, alta densità, tema di sistema.
+- **Gli stem derivati non adottati non si mostrano** (§12-M6).
+- Licenza **MIT** (era scritto "Proprietary" in pyproject per errore).
+
+### Decisioni della Fase 0 (committente, 09-11-2026)
+
+| # | Domanda | Decisione | Perché |
+|---|---|---|---|
+| 1 | Licenza | **MIT** + link per le donazioni | il repo è pubblico e `LICENSE` era già MIT; compatibile con Qt e FFmpeg LGPL come librerie separate |
+| 2 | Linux | **sì, AppImage x64 solo CPU**, seconda fascia | stessa pila di Windows, runner gratuiti: costo marginale basso |
+| 3 | Firma del codice | **per ora nessuna**; la pipeline firma da sola quando arrivano le credenziali | gli avvisi di Gatekeeper/SmartScreen si superano, e la documentazione spiega come; Apple ha la priorità se si compra (§9.3) |
+| 4 | DirectML | **no** | torch-directml fermo a 09-2024, solo versioni dev, legato a torch 2.4.1; la STFT complessa di Demucs non è supportata |
+| 5 | Lingue | **italiano e inglese**, struttura Qt Linguist pronta | le altre richiedono revisione madrelingua |
+| 6 | Esportazione kit | **fuori** da questo lavoro | non-obiettivo di §0 |
+| — | Matrice | arm64 da **macOS 11** (non 12); Windows **solo CPU** nella v3; Intel con DMG costruito in CI | §2 |
 
 ### Changelog 2.2 → 2.3
 
@@ -92,8 +133,13 @@ piena a chi chiede una traccia sola (O7).
   precedente è morto di questo. Se una feature non serve a separare o a
   consegnare gli stem, non entra.
 - **Niente editing audio.** Nessun trim, fade, EQ. Lo fa la DAW.
-- **Niente cloud, account, telemetria, auto-update.** Gira offline.
+- **Niente cloud, account, telemetria, auto-update.** Gira offline. La
+  diagnostica è un file che l'utente esporta e manda se e a chi vuole.
 - **Niente training di modelli.** Si usano pesi pre-addestrati.
+- **Niente esportazione di kit** (one-shot per drum rack/MPC): è
+  slicing sotto un altro nome (decisione Fase 0, 09-11-2026).
+- **Niente store** (Mac App Store, Microsoft Store), licenze a pagamento,
+  chiavi seriali.
 
 ---
 
@@ -163,49 +209,139 @@ Una cartella di file che l'utente può aprire, spostare, trascinare e
 cancellare con il Finder. Il `manifest.json` accanto serve all'app per
 ripopolare la schermata risultato senza ricalcolare niente.
 
-### D6 — Sviluppo su Windows/CUDA, consegna su Mac Intel/CPU
+### D6 — Sviluppo su Windows, consegna su quattro profili
 
-Lo sviluppo avviene su Windows con GPU NVIDIA. Sul dev-box l'inferenza
-gira su CUDA ed è 10–30 volte più veloce che sul target. Regole per non
-farsi ingannare:
+Lo sviluppo avviene su Windows, con una GPU NVIDIA. Sul dev-box
+l'inferenza su CUDA è 10–30 volte più veloce che su un Mac del 2012.
+Regole per non farsi ingannare:
 
 - Nessun numero di prestazioni misurato su CUDA entra mai nella spec,
-  nella UI o nei criteri di uscita. I costi tabellati vengono **solo**
-  dalla calibrazione sulla macchina dell'utente (§8.2.1) o da misure sul
-  Mac Intel di riferimento.
-- La CI esegue il benchmark di scalabilità (§6.3) con `device=cpu` anche
-  su Windows: i tempi assoluti non significano nulla, i **rapporti** sì.
-- Il codice non contiene alcuna API specifica di piattaforma fuori da
-  `ui/` e `packaging/` (§13.3): il motore identico gira su entrambe.
+  nella UI, nei criteri di uscita o nella documentazione per l'utente.
+  I costi tabellati vengono **solo** dalla calibrazione sulla macchina
+  dell'utente (§8.2.1) o da misure con `device=cpu`.
+- La CI esegue il benchmark di scalabilità (§6.3) con `device=cpu` su
+  ogni profilo: i tempi assoluti non significano nulla, i **rapporti** sì.
+- Le API di piattaforma vivono solo in `ui/`, `packaging/`,
+  `engine/paths.py` e `engine/device.py`. Il motore è identico ovunque.
+- Ciò che da Windows non si può eseguire (un `.app`, un AppImage, un
+  drag verso Logic) **non si dichiara verificato**: va nella checklist
+  manuale o nella CI sulla piattaforma vera.
+
+### D7 — Profili di build: una pila di librerie per famiglia di macchine
+
+Una sola pila non può servire tutti: l'ultimo torch per Mac Intel è il
+2.2.2 (2024), l'ultima Qt per macOS < 11 è la 6.4. Fermare tutti lì
+significherebbe negare ai Mac Apple Silicon l'accelerazione GPU e un
+torch mantenuto; alzare tutti significherebbe abbandonare il Mac mini.
+Quindi **profili**, ognuno col suo lock (§2):
+
+- `legacy-intel` è **congelato**: i suoi pin non cambiano mai, perché è
+  la configurazione provata sul campo. Si aggiunge solo ciò che serve.
+- I profili moderni condividono la stessa pila (torch 2.10, PySide6
+  6.7.3): i test del dev-box Windows valgono anche per Apple Silicon.
+- **Un solo motore.** `engine/`, `model/`, `worker/` girano identici con
+  torch 2.2.2 e 2.10; se un'API diverge, la differenza sta in un unico
+  modulo di compatibilità (`engine/compat.py`), testato con entrambe
+  le versioni (`pytest -m compat`). Mai un fork per piattaforma.
+- Un `.app` universal2 è impossibile (due torch diversi): due DMG, e la
+  documentazione dice quale scaricare.
+
+### D8 — Un acceleratore si accende solo dopo aver dimostrato di essere esatto
+
+Qualità prima del tempo (§0). Una GPU che produce uno stem sbagliato più
+in fretta è peggio della CPU. Regola per **ogni** acceleratore:
+
+- in `auto` si usa solo dopo un controllo di equivalenza con la CPU
+  sullo stesso audio (scarto < −40 dB), salvato per macchina in
+  `device.json`; senza verdetto positivo si resta su CPU;
+- se fallisce durante un job, la passata si rifà su CPU con un avviso;
+  un errore di calcolo spegne l'acceleratore per i job successivi, una
+  memoria esaurita no (è contingente);
+- l'utente può sempre forzare `--device cpu`.
+
+Oggi vale per MPS (Apple Silicon). CUDA segue la stessa regola dove c'è.
+DirectML è escluso (§13.3).
+
+### D9 — FFmpeg: un decoder minimo, LGPL, compilato da noi
+
+soundfile copre wav/flac/ogg/aiff/mp3, ma non m4a/aac/alac, che sono
+mezza libreria musicale di un utente Mac. Serve FFmpeg, e c'erano tre
+strade:
+
+- **PyAV** (wheel con FFmpeg incluso): scartato. Il suo FFmpeg è
+  compilato `--enable-gpl` con x264/x265, licenza GPLv3 (verificato con
+  `avutil_license()` sulla 13.1.0, 09-11-2026): incompatibile con la
+  regola "FFmpeg solo LGPL".
+- **Decoder di sistema** (`afconvert` su macOS, Media Foundation su
+  Windows): scartato. Tre implementazioni diverse da collaudare, niente
+  su Linux, comportamenti diversi sugli stessi file.
+- **FFmpeg minimo compilato in CI**: scelto. Sorgente ufficiale a
+  versione fissa con SHA-256, configurazione LGPL senza `--enable-gpl`,
+  solo demuxer/decoder audio più ciò che serve ai test (encoder pcm,
+  aac, alac). Pochi MB, identico su ogni piattaforma, nessuna libreria
+  esterna. L'app lo chiama come processo separato: niente linking, e la
+  conformità LGPL è banale (avviso + link al sorgente in
+  `THIRD_PARTY_NOTICES`).
 
 ---
 
-## 2. Stack — versioni esatte
+## 2. Piattaforme e stack — versioni esatte per profilo
 
-Il vincolo che comanda tutto: **l'ultima versione di PyTorch pubblicata
-con wheel macOS x86_64 è la 2.2.2.** Versioni successive non esistono per
-Mac Intel. L'intero stack è pinnato di conseguenza.
+### 2.1 Matrice delle piattaforme
 
-| Componente | Versione | Nota |
-|---|---|---|
-| Python | **3.11.x** sul target | obbligato: PySide6 6.4 richiede < 3.12. Sul dev-box anche 3.12 |
-| PyTorch | **== 2.2.2** | ultima con wheel macOS x86_64 (dichiarano 10.9+); non alzare mai senza cambiare target |
-| torchaudio | **== 2.2.2** | pari a torch (wheel 10.13+) |
-| numpy | **>= 1.26, < 2** | torch 2.2 è compilato contro numpy 1.x; numpy 2 lo rompe |
-| demucs | **== 4.0.1** | la 4.1 aggiunge `sphn` (Rust, senza wheel mac x86_64/cp311): sul target forzerebbe una build da sorgente. Verificato sul campo l'11-08-2026 |
-| soundfile | >= 0.12 | I/O, richiede libsndfile |
-| PySide6 | **== 6.4.3** sul target | ultima Qt che gira su macOS < 11; sul dev-box ammessa recente, API comuni |
-| pytest | >= 8 | |
-| PyInstaller | >= 6.6 | packaging `.app` x86_64; supporta macOS 10.15+ |
+| Profilo | Sistema minimo | Accelerazione | Pacchetto | Collaudo |
+|---|---|---|---|---|
+| `legacy-intel` | macOS 10.15, Mac Intel | solo CPU | DMG x86_64 + installer zip (§9.5) | CI su runner Intel + Mac mini 2012 a mano |
+| `mac-arm64` | macOS 11, Apple Silicon | MPS validato (D8) | DMG arm64 | CI su runner arm64 (senza GPU: MPS solo a mano) |
+| `win-x64` | Windows 10 1809+ / 11, x64 | solo CPU | installer Inno Setup | CI + dev-box: installa, separa, disinstalla |
+| `linux-x64` | glibc ≥ 2.28 (Ubuntu 20.04, Debian 11, Fedora 29 e successive) | solo CPU | AppImage | CI su Ubuntu |
 
-Due lock file, uno per piattaforma, entrambi con hash:
+Perché questi minimi:
 
-- `requirements-macos-x86_64.lock` — quello che conta, usato dal build.
-- `requirements-dev-win.lock` — dev su Windows; identico salvo
-  `torch==2.2.2+cu121` per l'inferenza CUDA in sviluppo.
+- **macOS 11 su Apple Silicon**: torch 2.10, torchaudio 2.10, PySide6
+  6.7.3 hanno wheel `macosx_11_0`; ogni Mac M1 è uscito con macOS 11.
+  Dalla 2.12 torch chiede macOS 14: per questo il profilo si ferma alla
+  serie 2.10, che copre ogni Mac Apple Silicon esistente.
+- **macOS 10.15 su Intel**: il Mac mini 2012 si ferma a Catalina, e Qt
+  6.4 è l'ultima che ci gira.
+- **Windows solo CPU**: un torch CUDA per Windows pesa ~2,5 GB, oltre il
+  limite di 2 GB per file delle release GitHub (§13.3). Windows su ARM
+  usa la build x64 via emulazione.
+- **glibc 2.28**: è il minimo delle wheel `manylinux_2_28` di torch;
+  l'AppImage si costruisce in un ambiente con quella glibc.
 
-`pyproject.toml` per i range. Qualsiasi aggiornamento di torch è vietato
-finché il target resta Mac Intel: è il pin più importante del progetto.
+### 2.2 Stack per profilo
+
+| Componente | `legacy-intel` | `mac-arm64`, `win-x64`, `linux-x64` | Perché |
+|---|---|---|---|
+| Python | **3.11** | **3.12** | PySide6 6.4 richiede < 3.12 |
+| torch / torchaudio | **2.2.2** | **2.10.0** | 2.2.2: ultima con wheel macOS x86_64. 2.10: ultima per macOS 11 arm64 |
+| numpy | **≥ 1.26, < 2** | ≥ 1.26, < 3 | torch 2.2 è compilato contro numpy 1.x |
+| PySide6 | **6.4.3** | **6.7.3** | 6.4: ultima Qt per macOS < 11. 6.7: ultima per macOS 11. Il codice usa solo API presenti nella 6.4 |
+| demucs | **4.0.1** | **4.0.1** | la 4.1 porta `sphn` (Rust, senza wheel per mac x86_64/cp311): build da sorgente sul target, visto sul campo l'11-08-2026. Sui profili moderni la 4.0.1 è verificata con torch 2.10 (test lenti, 09-11-2026) |
+| soundfile | ≥ 0.12 | ≥ 0.12 | I/O, libsndfile incluso nella wheel |
+| certifi | ≥ 2024.2 | ≥ 2024.2 | nel bundle non ci sono i certificati di sistema |
+| FFmpeg | 7.1.x LGPL minimo | 7.1.x LGPL minimo | D9; compilato in CI, versione e SHA-256 fissati in `packaging/ffmpeg/` |
+| PyInstaller | 6.22.3 | 6.22.3 | strumenti di build fissati in `packaging/requirements-build.txt` |
+
+I pin sono scritti **una volta sola**, come condizioni di piattaforma in
+`pyproject.toml`. Da lì, un lock con hash per profilo:
+
+- `requirements-macos-x86_64.lock` — `legacy-intel`. Si rigenera
+  **vincolato** alle versioni che già contiene.
+- `requirements-macos-arm64.lock`, `requirements-windows-x64.lock`,
+  `requirements-linux-x64.lock`.
+
+`python packaging/gen_locks.py` li rigenera tutti (con `uv`, che risolve
+per una piattaforma diversa da quella su cui gira); `--check` li verifica
+soltanto. La verifica interroga PyPI: ogni pacchetto deve avere un wheel
+installabile sul profilo (versione di Python, architettura, macOS minimo).
+Se manca, il lock è invalido. Le uniche eccezioni sono pacchetti Python
+puri pubblicati solo come sorgente (`demucs`, `dora-search`,
+`antlr4-python3-runtime`), installati senza compilatore.
+
+Ovunque si installa con `--require-hashes --only-binary :all:`: **la
+macchina dell'utente non compila mai niente.**
 
 ---
 
@@ -217,10 +353,16 @@ Da creare esattamente così. I conteggi righe sono tetti, non obiettivi.
 stemforge/
 ├── BUILD_SPEC.md                  questo file
 ├── README.md                      uso, 1 pagina
-├── pyproject.toml
-├── requirements-macos-x86_64.lock
-├── requirements-dev-win.lock
-├── Makefile                       dev, test, lint, build, sign
+├── pyproject.toml                 pin per profilo come condizioni (§2.2)
+├── requirements-macos-x86_64.lock legacy-intel (congelato)
+├── requirements-macos-arm64.lock
+├── requirements-windows-x64.lock
+├── requirements-linux-x64.lock
+├── LICENSE                        MIT
+├── THIRD_PARTY_NOTICES            ogni dipendenza distribuita, con licenza
+├── PRIVACY.md                     "non raccogliamo nulla"
+├── CONTRIBUTING.md
+├── Makefile                       dev, test, lint, build, sign, marker di test
 │
 ├── src/stemforge/
 │   ├── __init__.py                __version__
@@ -239,12 +381,20 @@ stemforge/
 │   │   ├── vocalsplit.py          2° stadio lead/cori (M6)  (~130)
 │   │   ├── dereverb.py            de-riverbero voce (M6)    (~120)
 │   │   ├── roformer.py            backend RoFormer (M4)     (~180)
-│   │   ├── device.py              CUDA / CPU                (~70)
-│   │   ├── calibrate.py           micro-benchmark 1° avvio  (~90)
-│   │   └── audio_io.py            load, resample, write     (~130)
+│   │   ├── device.py              CPU / CUDA / MPS, verdetti (~130)
+│   │   ├── paths.py               dati per piattaforma      (~50)
+│   │   ├── compat.py              differenze torch 2.2/2.10 (~80)
+│   │   ├── ffmpeg.py              trova e usa il FFmpeg LGPL (~120)
+│   │   ├── calibrate.py           benchmark + validazione MPS (~170)
+│   │   └── audio_io.py            load, resample, blocchi   (~250)
 │   │
 │   ├── worker/                    — processo figlio
 │   │   ├── protocol.py            messaggi JSON UI <-> worker (~90)
+│   │   ├── launch.py              comando del figlio, senza Qt (~20)
+│   │   ├── pipeline.py            esecuzione di un job      (~350)
+│   │   ├── assemble.py            sottrazioni e scrittura   (~200)
+│   │   ├── planning.py            ponte logico per l'UI     (~120)
+│   │   ├── selftest.py            collaudo del pacchetto    (~300)
 │   │   └── runner.py              entry point del figlio    (~150)
 │   │
 │   ├── export/
@@ -263,15 +413,34 @@ stemforge/
 │   │
 │   └── cli.py                     stessa pipeline, headless (~130)
 │
+├── resources/i18n/                traduzioni Qt Linguist (.ts sorgente, .qm compilati)
+│
 ├── tests/
 │   ├── fixtures/                  8 s di audio sintetico, no copyright
 │   ├── unit/
 │   └── integration/
 │
+├── docs/                          guide utente, DAW, test e ottimizzazioni
+│
+├── .github/
+│   ├── actions/setup-stemforge/   Python giusto + venv dal lock, per profilo
+│   ├── workflows/ci.yml           test veloci su ogni push, tutti i profili
+│   ├── workflows/release.yml      build, collaudo dei pacchetti, release in bozza
+│   └── ISSUE_TEMPLATE/            chiede il file di diagnostica
+│
 └── packaging/
-    ├── stemforge.spec             PyInstaller, x86_64
+    ├── stemforge.spec             PyInstaller, un solo spec per tutti i profili
+    ├── icon.png, make_icon.py     icona (convertita in .icns/.ico da Pillow)
+    ├── gen_locks.py               lock per profilo + verifica su PyPI
+    ├── requirements-build.txt     PyInstaller, Pillow, pytest a versione fissa
+    ├── ffmpeg/                    sorgente fissato + script di build LGPL (D9)
     ├── entitlements.plist
-    └── notarize.sh
+    ├── notarize.sh                firma Developer ID + notarizzazione + gate licenze
+    ├── macos/                     DMG, verifica del macOS minimo dei binari
+    ├── windows/                   installer Inno Setup
+    ├── linux/                     AppImage
+    ├── installer/                 installer zip del Mac mini (§9.5)
+    └── ci/                        collaudo dei pacchetti in CI
 ```
 
 **Dipendenze fra livelli — direzione unica, verificata in CI:**
@@ -623,17 +792,22 @@ Perché questi numeri:
   altri preset sarebbe tempo rubato alla scalabilità.
 - **`overlap` oltre 0.25 non serve a niente**, e sotto 0.05 iniziano a
   sentirsi le giunzioni. Il costo è lineare.
-- **`half` (fp16) è un fatto solo di sviluppo:** vale su CUDA. Sul target
-  (CPU) fp16 è emulato e più lento, quindi è **sempre `False` quando
-  `device == "cpu"`**, qualunque cosa dica il preset. Sul target i preset
-  differiscono solo per `overlap` e `shifts`.
+- **`half` (fp16) vale solo su CUDA.** Su CPU è emulato e più lento,
+  quindi è **sempre `False` quando `device == "cpu"`**, qualunque cosa
+  dica il preset. Su MPS si resta in fp32: la validazione di D8 confronta
+  fp32 con fp32, e un fp16 non validato rimetterebbe in gioco la qualità.
+  Su CPU e MPS i preset differiscono solo per `overlap` e `shifts`.
 - **`segment` resta 7.8 anche in `best`:** aumentarlo alza la RAM in modo
   quadratico e su un Mac Intel da 8 GB fa swappare, che distrugge i tempi
   senza aggiungere qualità.
 
 ### 5.7 I/O audio — regole
 
-1. Decodifica sempre a **float32**, mai int.
+1. Decodifica sempre a **float32**, mai int. soundfile per
+   wav/flac/ogg/aiff/mp3; tutto il resto (m4a/aac, alac, …) passa dal
+   FFmpeg LGPL dell'app (D9), mai da un programma installato
+   dall'utente. File corrotti, protetti da DRM o non audio danno un
+   errore che dice cosa fare (§10.1), mai un crash.
 2. I modelli girano a **44100 Hz**. Se la sorgente ha un altro sample rate,
    resample in ingresso e **resample indietro in uscita**: l'utente deve
    riavere il suo sample rate originale, o gli stem non si allineeranno una
@@ -656,6 +830,15 @@ Perché questi numeri:
    (es. equal-power) non somma a 1 e romperebbe l'invariante di §10.2
    proprio sui file lunghi, dove nessuno esegue mai il test. Limite duro
    30 minuti, oltre il quale si rifiuta con messaggio chiaro.
+7. **Multicanale** (5.1, 7.1…): i modelli sono stereo. Si fa un downmix
+   stereo con i coefficienti ITU-R BS.775 (centro e surround a −3 dB, LFE
+   escluso), lo si **dichiara** con un avviso, e gli stem sono stereo.
+   L'invariante di §10.2 si misura rispetto a quel downmix. Tenere solo i
+   primi due canali è vietato: si perderebbe la voce, che nel 5.1 sta nel
+   centro.
+8. **Valori non finiti** (NaN, ±Inf) nel file: si rifiuta il file con un
+   messaggio chiaro, mai si passano al modello. Il clipping oltre 0 dBFS
+   nei float si conserva: non è compito nostro correggerlo.
 
 ### 5.8 Modelli, pesi e licenze — la tabella delle decisioni
 
@@ -793,6 +976,17 @@ Requisiti:
 - L'azione è **Copy**, mai Move: il file deve restare nella cartella di
   output anche dopo il drop.
 
+### 7.2.1 Le DAW e i sistemi della v3
+
+Il drag deve funzionare verso **Ableton Live, Logic Pro, FL Studio,
+Reaper, Cubase, Studio One e Bitwig**, su ogni sistema dove esistono.
+Alcune DAW, soprattutto su Windows, leggono formati del drag diversi
+dalla lista di URL (`CF_HDROP` su Windows, `text/uri-list` su Linux); il
+modulo `ui/drag_export.py` aggiunge ciò che serve **senza togliere** gli
+URL che Ableton già legge. Nessuna DAW si può collaudare in CI: per
+ognuna c'è una riga nella checklist manuale di `docs/daw/` (DAW, sistema,
+gesto, esito atteso), spuntabile in dieci minuti.
+
 ### 7.3 Layout su disco
 
 ```
@@ -923,36 +1117,73 @@ Questa è la schermata che conta, perché è quella da cui si trascina.
 - Nessuna logica di business in un widget: se una classe UI importa torch o
   soundfile, è un errore di architettura.
 - Nessun `QThread` per l'inferenza: si usa il processo figlio (D2).
+- Solo API presenti in **PySide6 6.4** (il profilo `legacy-intel`).
+
+### 8.6 Un'interfaccia per tutti
+
+- **Lingue**: italiano e inglese. Ogni testo visibile passa da `tr()`; i
+  sorgenti `.ts` e i `.qm` compilati stanno in `resources/i18n/`. La
+  lingua segue il sistema, con scelta manuale persistente. I messaggi
+  d'errore del worker arrivano già tradotti oppure come chiave tradotta
+  dall'UI: mai un italiano a metà in un'interfaccia inglese.
+- **Tastiera**: ogni schermata si usa senza mouse, con un ordine di
+  tabulazione logico, scorciatoie standard (Invio = Separa, Esc =
+  Annulla/Indietro, Cmd/Ctrl+O = scegli file) e un focus sempre visibile.
+- **Screen reader** (VoiceOver, NVDA): ogni controllo ha un nome
+  accessibile; l'avanzamento e gli esiti si annunciano.
+- **Contrasto WCAG AA** in entrambi i temi; nessuna informazione affidata
+  al solo colore.
+- **Alta densità**: corretta dal 100% al 200% di scala, senza testi
+  tagliati (verificato con pseudo-lingua più lunga del 40%).
+- **Tema chiaro/scuro** dal sistema.
+- **Convenzioni del sistema**: "Mostra nel Finder" / "Mostra in Esplora
+  file" / "Mostra nella cartella"; Cmd su macOS, Ctrl altrove.
 
 ---
 
-## 9. App standalone su macOS
+## 9. Pacchetti per piattaforma
 
 ### 9.1 Build
 
-PyInstaller, `packaging/stemforge.spec`:
+PyInstaller, **un solo** `packaging/stemforge.spec` per tutti i profili;
+le differenze arrivano da variabili d'ambiente impostate dalla CI
+(architettura, macOS minimo, identità di firma):
 
-- **`target_arch = "x86_64"`.** Il target è il Mac Intel. Universal2
-  resta escluso: richiederebbe una toolchain doppia per torch — che per
-  arm64 avrebbe comunque versioni diverse, visto il pin 2.2.2 — e non
-  serve a nessuno degli utenti previsti. Bonus non garantito: un `.app`
-  x86_64 gira anche su Apple Silicon via Rosetta 2, ma non è un target
-  supportato né testato.
+- **Due build Mac distinte**, `x86_64` (`legacy-intel`, macOS 10.15) e
+  `arm64` (`mac-arm64`, macOS 11): universal2 è impossibile con due torch
+  diversi (D7). La build Intel gira anche su Apple Silicon via Rosetta,
+  ma più lenta e senza GPU: la documentazione indirizza al DMG giusto.
+- Sui Mac si usa il **Python ufficiale di python.org**, compilato per
+  macOS 10.9+: PyInstaller porta la libpython dentro l'app, e un Python
+  compilato per un macOS recente renderebbe l'app inapribile sui Mac
+  vecchi.
 - Escludere `matplotlib`, `tkinter`, `IPython`, `pytest` e ogni backend Qt
   non usato. Senza esclusioni il bundle passa 1 GB.
-- `.app` con `Info.plist` che dichiara i tipi di file audio in
-  `CFBundleDocumentTypes`, così "Apri con" funziona dal Finder.
-- `LSMinimumSystemVersion = 10.15`. Nota di contesto: Apple sta chiudendo
-  il supporto Intel (macOS 26 è l'ultima major per Intel). Non cambia
-  nulla per la v1 — l'app gira offline e continuerà a girare — ma è il
-  motivo per cui §13.2 (CoreML) su questo target non promette molto:
-  senza Neural Engine, CoreML girerebbe comunque su CPU.
+- Il FFmpeg LGPL (D9) entra nel pacchetto come eseguibile separato.
+- `demucs/remote/*` (indice e configurazioni dei modelli) entra come
+  **dato**: senza, l'app muore al primo caricamento (visto sul campo,
+  12-08-2026).
+- `.app` con `Info.plist` che dichiara i tipi audio in
+  `CFBundleDocumentTypes` ("Apri con" dal Finder); su Windows, voci
+  "Apri con" registrate dall'installer.
+- **Ogni binario Mach-O del pacchetto** deve dichiarare un macOS minimo
+  non superiore a quello promesso: `packaging/macos/check_min_os.py` lo
+  verifica in CI. È il modo di garantire i Mac vecchi senza averli.
+- Contesto: macOS 26 è l'ultima versione per Mac Intel. Il profilo
+  `legacy-intel` continuerà a funzionare offline, ma non riceverà mai
+  una pila più recente.
 
 ### 9.2 I pesi dei modelli
 
 **Non impacchettare i pesi nell'app** (htdemucs_ft è ~700 MB in quattro
-file). Scaricarli al primo avvio, con barra di avanzamento e destinazione
-`~/Library/Application Support/StemForge/models/`.
+file). Scaricarli al primo avvio, con barra di avanzamento, nella
+cartella dati della piattaforma (`engine/paths.py`):
+
+| Sistema | Cartella dati |
+|---|---|
+| macOS | `~/Library/Application Support/StemForge/` |
+| Windows | `%LOCALAPPDATA%\StemForge\` — mai Roaming: un GB di modelli e una calibrazione che descrive *questa* macchina non devono seguire il profilo su altri PC |
+| Linux | `$XDG_DATA_HOME/stemforge/` (default `~/.local/share/stemforge/`) |
 
 Fonti di download:
 
@@ -971,26 +1202,91 @@ connessione **una sola volta**, poi l'app è offline per sempre.
 
 ### 9.3 Firma
 
-Per uso personale basta la firma ad-hoc, poi click destro → Apri la prima
-volta. **Niente `--deep`**: è deprecato e inaffidabile su bundle con
-centinaia di dylib come quelli PyInstaller. Si passa l'identità a
-PyInstaller (`codesign_identity` nello spec file), che firma la gerarchia
-dall'interno verso l'esterno; per l'ad-hoc, identità `-`.
+Decisione Fase 0: **per ora nessun certificato a pagamento.** La
+pipeline è pronta e firma da sola appena le credenziali compaiono nei
+secrets del repository (README, "Distribuzione firmata"):
 
-Per distribuire a terzi serve un Apple Developer Program (99 $/anno):
-Developer ID, hardened runtime, `entitlements.plist` con
-`com.apple.security.cs.allow-unsigned-executable-memory` (torch ne ha
-bisogno), poi `notarytool submit --wait` e `stapler staple`.
-`packaging/notarize.sh` va scritto ma **non** invocato dalla build di
-default, e include il controllo licenze di §5.8 punto 3: una build con
-pesi non-commercial non può uscire da quella porta.
+- **macOS**: senza Developer ID l'app è firmata ad-hoc (obbligatorio su
+  Apple Silicon) e Gatekeeper avvisa. Con Developer ID (99 $/anno):
+  firma dall'interno verso l'esterno con hardened runtime e timestamp,
+  `entitlements.plist` con `allow-unsigned-executable-memory` (torch ne
+  ha bisogno), poi `notarytool submit --wait` e `stapler staple` sul DMG.
+  **Niente `--deep`**: deprecato e incoerente sui bundle PyInstaller.
+  Tutto sta in `packaging/notarize.sh`, che include il gate licenze di
+  §5.8 punto 3: una build con pesi non-commercial non esce da lì.
+- **Windows**: senza certificato Authenticode, SmartScreen avvisa; con il
+  certificato `signtool` firma l'exe e l'installer.
+- **Priorità d'acquisto**: Apple. Da macOS 15 un'app non firmata si apre
+  solo da Impostazioni di Sistema → Privacy e sicurezza → "Apri
+  comunque"; su Windows bastano due click ("Ulteriori informazioni" →
+  "Esegui comunque").
+
+Finché non c'è firma, la documentazione per l'utente spiega passo passo
+come superare gli avvisi, per ogni versione di sistema, e pubblica lo
+SHA-256 di ogni file.
 
 ### 9.4 Primo avvio
 
-Sequenza: controllo pesi → download se mancano → **calibrazione**
-(§8.2.1, con una riga di spiegazione: "Misuro la velocità di questo Mac
-per darti stime oneste") → finestra principale.
+Sequenza: controllo pesi → download se mancano → **verifica
+dell'acceleratore** se presente (D8) → **calibrazione** (§8.2.1, con una
+riga di spiegazione: "Misuro la velocità di questo computer per darti
+stime oneste") → finestra principale.
 Mai una finestra vuota mentre si scaricano 700 MB in silenzio.
+
+### 9.5 Installer zip del Mac mini (`legacy-intel`)
+
+Lo zip con "Installa StemForge.command" e "Aggiorna StemForge.command",
+che costruisce l'app sul Mac dell'utente, **resta e continua a
+funzionare**: è il percorso provato sul campo. Il DMG Intel costruito in
+CI lo affianca e lo renderà superfluo una volta verificato sul Mac mini.
+
+### 9.6 CI, collaudo e pubblicazione
+
+- `ci.yml`, a ogni push: test veloci su tutti i profili, validità dei
+  lock.
+- `release.yml`, su tag `v*`, su richiesta e una volta a settimana (per
+  accorgersi se una dipendenza sparisce da PyPI): per ogni profilo test
+  veloci e lenti con Demucs vero, build, controllo del macOS minimo dei
+  binari, `--selftest` sull'app costruita, pacchetto, poi **di nuovo
+  `--selftest` sul pacchetto così come lo riceve l'utente** (DMG montato;
+  installer Windows installato in silenzio e poi disinstallato; AppImage
+  avviata). Un secondo giro ripete il collaudo su altre versioni di
+  sistema disponibili come runner.
+- Sui tag la release si crea **in bozza**, con `SHA256SUMS.txt`: la
+  pubblicazione è un click umano.
+- Il Mac mini 2012 e un Mac Apple Silicon con GPU vera restano verifiche
+  manuali (checklist in `docs/`): nessun runner ha macOS 10.15 o una GPU
+  Apple.
+
+### 9.7 Installer Windows
+
+Inno Setup:
+
+- installazione **per utente**, senza amministratore (scelta di "tutti
+  gli utenti" possibile dal dialogo);
+- collegamento nel menu Start, icona sul desktop opzionale;
+- "Apri con" per i formati audio, senza rubare l'associazione predefinita;
+- disinstallazione pulita che **chiede** se eliminare anche modelli e
+  calibrazione (~1 GB): lasciarli in silenzio sarebbe un GB perso,
+  cancellarli in silenzio un download da rifare;
+- percorsi con spazi, caratteri unicode, cartelle sincronizzate da
+  OneDrive e percorsi lunghi gestiti e collaudati.
+
+### 9.8 AppImage Linux
+
+Seconda fascia (decisione Fase 0): x64, solo CPU, costruita in un
+ambiente con glibc 2.28 perché giri su Ubuntu 20.04 e successive.
+Include libsndfile (dalla wheel) e il FFmpeg LGPL. Il drag verso le DAW
+Linux usa `text/uri-list`.
+
+### 9.9 Diagnostica
+
+Niente telemetria (§0). Un pulsante discreto "Esporta diagnostica" nella
+schermata iniziale (e la voce nel menu Aiuto su macOS) crea uno zip con
+il log, la versione, il sistema, l'esito di `--selftest --offline` e i
+verdetti dei dispositivi. Il log contiene i nomi dei brani elaborati: lo
+zip si salva dove sceglie l'utente, che può aprirlo e decidere se e a chi
+mandarlo. Il template delle issue su GitHub lo chiede.
 
 ---
 
@@ -1002,7 +1298,9 @@ Mai una finestra vuota mentre si scaricano 700 MB in silenzio.
    separazione" è vietato. "Memoria insufficiente: chiudi altre app o passa
    al preset Veloce" è accettabile.
 2. Traceback completo nel log, **mai** in faccia all'utente.
-3. Log in `~/Library/Logs/StemForge/stemforge.log`, rotazione a 5 MB × 3.
+3. Log con rotazione a 5 MB × 3: macOS `~/Library/Logs/StemForge/`,
+   Windows `%LOCALAPPDATA%\StemForge\logs\`, Linux
+   `~/.local/state/stemforge/`.
 4. Un file che fallisce in un batch **non ferma gli altri**. Riepilogo alla
    fine.
 
@@ -1074,6 +1372,50 @@ def test_model_layer_has_no_io(): ...
 ```
 
 Sono i tre test che impediscono al progetto di tornare quello di prima.
+Con la v3 se ne aggiungono altri, sempre veri test: nessuna funzione
+oltre 50 righe; `ui/` non importa `engine`, `export`, `torch`,
+`soundfile`, `demucs`; nessuna API di piattaforma (`sys.platform`,
+`os.name`, `winreg`, `ctypes`…) fuori da `ui/`, `packaging/`,
+`engine/paths.py`, `engine/device.py` e `engine/ffmpeg.py`. I tetti non
+si alzano: se un file cresce, si spacca.
+
+### 10.5 Collaudo del pacchetto — `--selftest`
+
+I guasti più gravi visti sul campo esistevano **solo dentro il
+pacchetto** (dati di demucs non inclusi, certificati HTTPS assenti,
+worker che muore al lancio): nessun test sui sorgenti poteva vederli.
+Per questo l'eseguibile stesso ha un collaudo:
+
+```
+StemForge --selftest [--report FILE] [--offline]
+```
+
+Controlla: dati di demucs presenti, certificati e connessione HTTPS al
+server dei modelli, decodifica di wav/flac/ogg/mp3/m4a/alac, interfaccia
+costruita (plugin Qt, lettore di anteprima), e una **separazione reale**
+nel processo worker lanciato esattamente come lo lancia l'app, con
+verifica di lunghezza in campioni, sample rate e invariante (< −40 dBFS).
+Gira in CI su ogni pacchetto prima della pubblicazione (§9.6); sulla
+macchina dell'utente alimenta la diagnostica (§9.9).
+
+### 10.6 Famiglie di test
+
+Il giro veloce resta veloce (unitari < 5 s). Ciò che pesa sta sotto un
+marker, ognuno con il suo comando nel `Makefile`:
+
+| Marker | Cosa | Dove gira |
+|---|---|---|
+| *(nessuno)* | unitari e integrazione con backend finto | ogni push, ogni profilo |
+| `slow` | Demucs vero su CPU: invariante, equivalenza sotto-modello, scalabilità | release, settimanale |
+| `compat` | il motore con torch 2.2.2 **e** 2.10 (due ambienti) | ogni push |
+| `fuzz` | Hypothesis su modello, pianificatore, protocollo, file audio estremi | su richiesta |
+| `chaos` | worker ucciso, disco pieno, rete che cade, file di stato corrotti | su richiesta |
+| `soak` | batch di 20 brani, brano di 29 minuti, memoria e processi monitorati | su richiesta |
+| `frozen` | la stessa batteria contro l'app impacchettata | release |
+
+Regole: ogni bug trovato produce prima un test che fallisce; un test che
+non può fallire non conta (mutation testing sui moduli puri, obiettivo
+≥ 90%); i fixture audio si generano in codice, mai materiale protetto.
 
 ---
 
@@ -1094,6 +1436,13 @@ regole servono a impedire che risucceda.
 9. **Nessuna dipendenza nuova senza giustificazione scritta** nel commit.
 10. **Nessuna feature non presente in questa spec.** Se sembra una buona
     idea, si scrive in fondo al README sotto "Idee" e si va avanti.
+11. **Ogni dipendenza distribuita sta in `THIRD_PARTY_NOTICES`** con la
+    sua licenza e, per le LGPL, il link al sorgente. Nessun peso con
+    licenza non-commercial in una build distribuita (§5.8).
+12. **Ottimizzare solo misurando** (§6): profilo prima, guadagno ≥ 5% su
+    mediana di 5 ripetizioni con `device=cpu`, risultato identico (bit
+    per bit fuori dall'inferenza, < −90 dBFS dentro). Ogni tentativo,
+    accettato o scartato, va in `docs/OPTIMIZATION_LOG.md`.
 
 ---
 
@@ -1178,7 +1527,24 @@ Ordine di implementazione, dal più redditizio al meno:
 
 **Se uno dei tre non raggiunge una qualità utilizzabile, non si spedisce.**
 Uno stem derivato mediocre è peggio della sua assenza: l'utente lo prova
-una volta, non funziona, e smette di fidarsi anche del resto.
+una volta, non funziona, e smette di fidarsi anche del resto. Finché un
+modello non è adottato, la sua opzione **non compare** nell'interfaccia.
+
+### M7 — Multipiattaforma (v3)
+
+I quattro profili di §2, i pacchetti di §9, l'interfaccia di §8.6.
+
+> **Uscita:** per ogni profilo, in CI: test veloci e lenti verdi, lock
+> valido, pacchetto costruito, `--selftest` verde sull'app e sul
+> pacchetto così come lo riceve l'utente, nessun binario Mac oltre il
+> macOS promesso. Sul dev-box Windows: installare, separare un brano vero,
+> trascinarlo, disinstallare. A mano, con checklist: il DMG Intel sul Mac
+> mini 2012 (stesso comportamento dello zip), il DMG arm64 su un Mac
+> Apple Silicon con GPU (verdetto MPS positivo), il drag verso le DAW di
+> §7.2.1. Il profilo `legacy-intel` produce un lock identico nei pin a
+> quello in uso sul campo. Lo stato di ogni criterio — verificato
+> eseguendo, solo staticamente, o da provare a mano e da chi — sta in
+> `docs/RELEASE_READINESS.md`.
 
 ---
 
@@ -1195,9 +1561,22 @@ avvio, non di velocità di calcolo. È un lavoro autonomo, da valutare
 **dopo** M5, non prima. Farlo adesso rallenterebbe tutto senza migliorare
 nulla di percepibile.
 
-**13.3 — Windows e Linux non sono target della v1.** Il codice resta
-portabile (nessuna API macOS fuori da `ui/` e `packaging/`) — ed è già
-esercitato su Windows ogni giorno, perché lo sviluppo avviene lì (D6) —
-ma packaging, firma e test di consegna sono solo macOS. Aggiungere
-Windows come *target* dopo M5 è ragionevole; farlo prima raddoppia il
-lavoro di packaging a metà progetto.
+**13.3 — Le piattaforme: cosa la v3 promette e cosa no.** Windows e
+Linux sono diventati target (§2), insieme a ogni Mac Apple Silicon. Fuori
+restano, ognuno con la sua ragione:
+
+- **GPU su Windows e Linux.** Il torch CUDA pesa ~2,5 GB: un installer
+  oltre il limite di 2 GB per file delle release GitHub, e un download
+  sproporzionato per chi non ha una NVIDIA. Il codice CUDA resta (D8) e
+  serve allo sviluppo; una build CUDA distribuita richiede prima un
+  hosting dedicato.
+- **DirectML** (GPU AMD/Intel su Windows). torch-directml è fermo a
+  settembre 2024, esiste solo in versioni di sviluppo, è legato a torch
+  2.4.1 — incompatibile con entrambe le pile — e non supporta la STFT
+  complessa di Demucs, quindi il grosso del calcolo tornerebbe su CPU.
+- **Windows su ARM nativo.** Gira la build x64 in emulazione; torch per
+  Windows ARM64 non è ancora una base stabile.
+- **macOS precedenti al 10.15** e Linux con glibc < 2.28: le librerie di
+  base (Qt 6.4, wheel manylinux di torch) non ci arrivano.
+- **Una build universal2**: impossibile con due torch diversi (D7).
+- **Store e firme** a pagamento: vedi §0 e §9.3.
