@@ -19,12 +19,10 @@ BUILD_SPEC §5.1, §5.1.1. Scelte non ovvie, con la ragione:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-import numpy as np
-
+from stemforge.engine import paths
 from stemforge.engine.contract import BackendUnavailable, CancelledError, Quality
 from stemforge.model.stem import StemKind
 
@@ -36,12 +34,7 @@ _EPS = 1e-8
 
 def models_dir() -> Path:
     """Dove vivono i pesi (§9.2). Sovrascrivibile per i test."""
-    override = os.environ.get("STEMFORGE_MODELS")
-    if override:
-        return Path(override)
-    if os.name == "nt":  # dev-box Windows (D6)
-        return Path(os.environ["APPDATA"]) / "StemForge" / "models"
-    return Path.home() / "Library" / "Application Support" / "StemForge" / "models"
+    return paths.models_dir()
 
 
 def _load_model(model_name: str):

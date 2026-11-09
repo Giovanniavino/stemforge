@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
 from stemforge.model.manifest import Manifest
 
 _PATH_ROLE = Qt.ItemDataRole.UserRole
+_REVEAL_LABELS = {"darwin": "Mostra nel Finder", "win32": "Mostra in Esplora file"}
 
 
 def _drag_pixmap(count: int) -> QPixmap:
@@ -100,7 +101,7 @@ class ResultView(QWidget):
         buttons = QHBoxLayout()
         self._play = QPushButton("▶ Ascolta")
         self._play.clicked.connect(self._toggle_preview)
-        reveal = QPushButton("Mostra nel Finder" if sys.platform == "darwin" else "Mostra nella cartella")
+        reveal = QPushButton(_REVEAL_LABELS.get(sys.platform, "Mostra nella cartella"))
         reveal.clicked.connect(self._reveal)
         again = QPushButton("Un altro brano")
         again.clicked.connect(self.back_requested.emit)

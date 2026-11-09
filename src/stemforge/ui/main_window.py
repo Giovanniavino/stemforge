@@ -75,6 +75,28 @@ class MainWindow(QMainWindow):
         self._progress.cancel_button.setVisible(True)
         self._progress.stop()
 
+    def _open_pending_after_prepare(self) -> None:
+        """File aperti con "Apri con" mentre si scaricavano i modelli."""
+        if self._queue and self._current_job is None:
+            pending, self._queue = self._queue, []
+            self._drop.accept_paths(pending)
+
+    # -- file dall'esterno: "Apri con" del Finder / Esplora file (§9.1) ---
+
+    def open_files(self, paths: list[Path]) -> None:
+        audio = [p for p in paths if p.is_dir() or planning.is_supported(p)]
+        if not audio:
+            return
+        if self._bridge.running or self._preparing:
+            # un job è in corso: i nuovi file entrano in coda con le stesse
+            # scelte, come un batch (§10.1), senza interrompere niente
+            self._queue.extend(p for p in audio if p.is_file())
+            return
+        self._show_drop()
+        self._drop.accept_paths(audio)
+        self.raise_()
+        self.activateWindow()
+
     # -- routing ----------------------------------------------------------
 
     def _show_drop(self) -> None:
@@ -106,6 +128,7 @@ class MainWindow(QMainWindow):
         if self._preparing:
             self._end_prepare()
             self._show_drop()
+            self._open_pending_after_prepare()
             return
         self._progress.stop()
         notes = list(self._warnings)
@@ -125,6 +148,7 @@ class MainWindow(QMainWindow):
             self._end_prepare()
             self._drop.show_error(message)
             self._show_drop()
+            self._open_pending_after_prepare()
             return
         self._failures.append(message)
         if self._queue:

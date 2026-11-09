@@ -14,7 +14,7 @@ import traceback
 
 from stemforge.engine import audio_io, calibrate
 from stemforge.engine.contract import BackendUnavailable, CancelledError
-from stemforge.engine.device import ensure_ca_bundle, resolve_device
+from stemforge.engine.device import prepare_runtime_env
 from stemforge.model.job import SeparationJob
 from stemforge.worker import protocol
 from stemforge.worker.pipeline import run_job
@@ -45,7 +45,8 @@ def _prepare() -> int:
             label="Misuro la velocità di questo Mac per darti stime oneste",
             pass_index=len(models) + 1, pass_count=len(models) + 1,
         ))
-        device = resolve_device("auto")
+        # su Apple Silicon qui si verifica anche la GPU (MPS) contro la CPU
+        device = calibrate.resolve_job_device("auto")
         calibrate.first_run_calibration(device)
         marker = calibrate.calibration_path().parent / "prepared.json"
         marker.parent.mkdir(parents=True, exist_ok=True)
@@ -98,7 +99,7 @@ def _user_message(exc: Exception) -> str:
 
 def main() -> int:
     """Entry point del figlio: job su stdin, JSON-lines su stdout (D2)."""
-    ensure_ca_bundle()  # prima di qualsiasi download (pesi via HTTPS)
+    prepare_runtime_env()  # certificati HTTPS e ripiego MPS, prima di torch
     if "--prepare" in sys.argv:
         return _prepare()
     line = sys.stdin.readline()

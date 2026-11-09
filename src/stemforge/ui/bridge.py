@@ -8,20 +8,13 @@ figlio e ripulire la cartella annunciata da `Started`.
 from __future__ import annotations
 
 import shutil
-import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QProcess, Signal
 
 from stemforge.model.job import SeparationJob
 from stemforge.worker import protocol
-
-
-def _worker_command() -> list[str]:
-    if getattr(sys, "frozen", False):
-        # nel bundle PyInstaller l'app rilancia sé stessa in modalità worker
-        return [sys.executable, "--worker"]
-    return [sys.executable, "-m", "stemforge.worker.runner"]
+from stemforge.worker.launch import worker_command
 
 
 class WorkerBridge(QObject):
@@ -61,7 +54,7 @@ class WorkerBridge(QObject):
 
     def _spawn(self, extra_args: list[str]) -> QProcess:
         process = QProcess(self)
-        command = _worker_command()
+        command = worker_command()
         process.setProgram(command[0])
         process.setArguments(command[1:] + extra_args)
         process.readyReadStandardOutput.connect(self._on_stdout)

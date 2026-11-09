@@ -26,7 +26,6 @@ import numpy as np
 from stemforge import __version__
 from stemforge.engine import audio_io, calibrate
 from stemforge.engine.contract import Backend, BackendUnavailable, CancelledError, effective_quality
-from stemforge.engine.device import resolve_device
 from stemforge.engine.planner import (
     Pass,
     Plan,
@@ -187,6 +186,7 @@ def _run_second_stage(
 
 @dataclass
 class _JobState:
+    device: str
     stage1: dict[StemKind, np.ndarray] = field(default_factory=dict)
     stems: dict[StemKind, np.ndarray] = field(default_factory=dict)
     wet_vocals: dict[str, np.ndarray] = field(default_factory=dict)
@@ -194,11 +194,57 @@ class _JobState:
     unavailable: list[Pass] = field(default_factory=list)
 
 
+_GPU_FALLBACK_WARNING = (
+    "L'accelerazione GPU non ha funzionato su questo brano: ho continuato "
+    "sulla CPU (più lento, stesso risultato)."
+)
+
+
+def _is_memory_error(exc: BaseException) -> bool:
+    return isinstance(exc, MemoryError) or "out of memory" in str(exc).lower()
+
+
+def _run_first_stage(
+    job: SeparationJob,
+    p: Pass,
+    work: np.ndarray,
+    backends: BackendCache,
+    state: _JobState,
+    on_progress: Callable[[float], None],
+    should_cancel: Callable[[], bool],
+) -> None:
+    """1° stadio, con ripiego su CPU se la GPU Apple (MPS) fallisce.
+
+    Una memoria esaurita su un brano lungo è contingente; un errore di
+    calcolo no: in quel caso il verdetto MPS diventa negativo e i job
+    successivi partono direttamente su CPU.
+    """
+    from stemforge.engine.device import save_mps_verdict
+
+    def run_on(device: str) -> None:
+        backend = _get_backend(backends, p.backend, p.model, device, job.quality)
+        wanted = _first_stage_wanted(p, backend)
+        state.stage1 = _run_pass_blocks(backend, work, wanted, on_progress, should_cancel)
+
+    try:
+        run_on(state.device)
+    except (CancelledError, BackendUnavailable):
+        raise
+    except RuntimeError as exc:
+        if state.device != "mps":
+            raise
+        if not _is_memory_error(exc):
+            save_mps_verdict(False, f"errore durante un job: {exc!r}")
+        state.warnings.append(_GPU_FALLBACK_WARNING)
+        state.device = "cpu"
+        run_on("cpu")
+    state.stems.update(state.stage1)
+
+
 def _execute_passes(
     job: SeparationJob,
     plan_: Plan,
     work: np.ndarray,
-    device: str,
     backends: BackendCache,
     progress: _Progress,
     state: _JobState,
@@ -214,15 +260,12 @@ def _execute_passes(
         ))
         started = time.perf_counter()
         if p.backend == "demucs4":
-            backend = _get_backend(backends, p.backend, p.model, device, job.quality)
-            wanted = _first_stage_wanted(p, backend)
-            state.stage1 = _run_pass_blocks(
-                backend, work, wanted, progress.pass_callback(index), should_cancel
+            _run_first_stage(
+                job, p, work, backends, state, progress.pass_callback(index), should_cancel
             )
-            state.stems.update(state.stage1)
         else:
             _run_second_stage(
-                p, backends, job, device, state.stage1, state.stems,
+                p, backends, job, state.device, state.stage1, state.stems,
                 state.wet_vocals, state.warnings, state.unavailable,
                 progress.pass_callback(index), should_cancel,
             )
@@ -235,6 +278,15 @@ def _execute_passes(
         progress.complete_pass(index)
 
 
+def _job_device(job: SeparationJob, backends: BackendCache) -> str:
+    """Device del job. Una cache pre-popolata (test, batch) fissa già il
+    device dei backend: rispettarla evita di toccare torch per niente."""
+    preset = {key[2] for key in backends}
+    if job.device == "auto" and len(preset) == 1:
+        return preset.pop()
+    return calibrate.resolve_job_device(job.device)
+
+
 def run_job(
     job: SeparationJob,
     emit: Emit,
@@ -244,7 +296,6 @@ def run_job(
     backends = backends if backends is not None else {}
     source = audio_io.load(job.source)
     _check_disk(job, source)
-    device = resolve_device(job.device)
     plan_ = plan(job)
     rates = calibrate.load_rates()
     weights = [
@@ -256,9 +307,9 @@ def run_job(
     emit(protocol.Started(out_dir=str(out_dir)))
 
     work = audio_io.resample(source.data, source.samplerate, audio_io.MODEL_SAMPLERATE)
-    state = _JobState()
+    state = _JobState(device=_job_device(job, backends))
     _execute_passes(
-        job, plan_, work, device, backends, progress, state,
+        job, plan_, work, backends, progress, state,
         source.duration_s, emit, should_cancel,
     )
     write = assemble.effective_write(job, state.unavailable)

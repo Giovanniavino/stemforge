@@ -1,0 +1,6 @@
+# Strumenti di build e test (non finiscono nell'app). Versioni fisse:
+# la stessa build deve dare lo stesso pacchetto oggi e fra sei mesi.
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
+pillow==13.0.0
+pytest==9.2.0

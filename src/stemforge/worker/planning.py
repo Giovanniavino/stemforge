@@ -22,6 +22,25 @@ SUPPORTED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aiff", ".aif"}
 
 
 @dataclass(frozen=True)
+class DerivedOptions:
+    """Quali opzioni di 2° stadio mostrare: solo quelle con un modello vero."""
+
+    drum_detail: bool
+    vocal_split: bool
+    dereverb: bool
+
+
+def derived_options() -> DerivedOptions:
+    from stemforge.engine.registry import is_available
+
+    return DerivedOptions(
+        drum_detail=is_available("drumsplit"),
+        vocal_split=is_available("vocalsplit"),
+        dereverb=is_available("dereverb"),
+    )
+
+
+@dataclass(frozen=True)
 class PlanSummary:
     seconds: float  # già col margine del 15%
     n_passes: int
@@ -41,14 +60,10 @@ def summarize(job: SeparationJob, duration_s: float) -> PlanSummary:
 
 def probe_duration(path: Path) -> float | None:
     """Durata del file, o None se non leggibile. Vive qui e non nell'UI
-    perché usa soundfile (vietato nei widget, §8.5)."""
-    try:
-        import soundfile as sf
+    perché decodificare è lavoro del motore (vietato nei widget, §8.5)."""
+    from stemforge.engine.audio_io import probe_duration as probe
 
-        info = sf.info(str(path))
-        return info.frames / info.samplerate
-    except Exception:
-        return None
+    return probe(path)
 
 
 def is_supported(path: Path) -> bool:

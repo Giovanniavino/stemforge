@@ -97,6 +97,36 @@ def test_prepare_failure_leads_to_usable_drop_zone(qapp, tmp_path: Path):
     assert window._stack.currentWidget() is window._drop
 
 
+def test_unadopted_derived_options_are_hidden(qapp, tmp_path: Path):
+    # §12-M6: un derivato senza modello vero non si mostra affatto
+    from stemforge.ui.stem_picker import StemPicker
+    from stemforge.worker import planning
+
+    options = planning.derived_options()
+    picker = StemPicker(out_dir=tmp_path)
+    assert picker._drum_group.isVisibleTo(picker) == options.drum_detail
+    assert picker._vocal_group.isVisibleTo(picker) == (options.vocal_split or options.dereverb)
+
+
+def test_open_with_routes_files_and_queues_during_jobs(qapp, tmp_path: Path):
+    """"Apri con" (Finder / Esplora file): con l'app ferma il file arriva
+    alla scelta strumenti; con un job in corso entra in coda."""
+    from stemforge.ui.main_window import MainWindow
+
+    song = tmp_path / "brano.wav"
+    song.touch()
+    window = MainWindow(out_dir=tmp_path)
+    window.open_files([song, tmp_path / "note.txt"])
+    assert window._stack.currentWidget() is window._picker
+
+    window._preparing = True  # finché si prepara, niente cambio schermata
+    other = tmp_path / "altro.wav"
+    other.touch()
+    window.open_files([other])
+    assert window._queue == [other]
+    assert window._stack.currentWidget() is window._picker
+
+
 def test_bridge_does_not_overwrite_real_error(qapp):
     """Regressione dal campo: l'Error del worker seguito da exit 1 non
     deve produrre un secondo `failed` generico che sovrascrive il vero

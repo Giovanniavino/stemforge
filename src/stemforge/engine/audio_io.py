@@ -5,8 +5,9 @@ il diagramma delle dipendenze (§3) vieta a export di importare engine, e i
 due mondi condividono solo numpy.
 
 - Decodifica sempre a float32 (regola 1).
-- soundfile copre wav/flac/ogg/aiff/mp3; per m4a/aac si passa da un
-  ffmpeg esterno (bundled nell'app o sul PATH). Se manca, errore chiaro.
+- soundfile copre wav/flac/ogg/aiff/mp3; tutto il resto (m4a/aac in
+  primis) passa da PyAV, che porta FFmpeg dentro il pacchetto: nessun
+  programma esterno da installare, su nessuna piattaforma.
 - Il resampling usa torchaudio (sinc kaiser di qualità) ed è pigro:
   i test unitari girano senza torch.
 - File lunghi: blocchi con rampe lineari COMPLEMENTARI che sommano a 1
@@ -16,9 +17,6 @@ due mondi condividono solo numpy.
 
 from __future__ import annotations
 
-import shutil
-import subprocess
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,31 +52,61 @@ class SourceAudio:
         return self.original_frames / self.samplerate
 
 
-def _ffmpeg_path() -> str | None:
-    return shutil.which("ffmpeg")
+def _decode_via_pyav(path: Path) -> tuple[np.ndarray, int]:
+    """Decodifica con FFmpeg (via PyAV): [frames, channels] float32 e sample rate.
 
+    Ogni frame passa da un resampler verso float planare, così il
+    formato interno del codec (s16, flt, fltp...) non conta; il sample
+    rate resta quello del file: il resampling è compito di resample().
+    """
+    import av
 
-def _decode_via_ffmpeg(path: Path) -> tuple[np.ndarray, int]:
-    ffmpeg = _ffmpeg_path()
-    if ffmpeg is None:
+    try:
+        with av.open(str(path)) as container:
+            if not container.streams.audio:
+                raise UnsupportedFormatError(f"{path.name} non contiene audio.")
+            stream = container.streams.audio[0]
+            chunks: list[np.ndarray] = []
+            resampler = None
+            samplerate = 0
+            for frame in container.decode(stream):
+                if resampler is None:
+                    samplerate = frame.sample_rate
+                    resampler = av.AudioResampler(
+                        format="fltp", layout=frame.layout, rate=samplerate
+                    )
+                chunks += [f.to_ndarray() for f in resampler.resample(frame)]
+            if resampler is not None:
+                chunks += [f.to_ndarray() for f in resampler.resample(None)]
+    except av.error.FFmpegError as exc:
         raise UnsupportedFormatError(
-            f"Non so decodificare {path.name}: serve ffmpeg per questo formato. "
-            "Converti il file in WAV/FLAC/MP3 oppure installa ffmpeg."
-        )
-    with tempfile.TemporaryDirectory() as tmp:
-        out = Path(tmp) / "decoded.wav"
-        proc = subprocess.run(
-            [ffmpeg, "-v", "error", "-i", str(path), "-acodec", "pcm_f32le", str(out)],
-            capture_output=True,
-            text=True,
-        )
-        if proc.returncode != 0:
-            raise UnsupportedFormatError(
-                f"File audio non leggibile: {path.name}. "
-                f"Dettaglio: {proc.stderr.strip()[:200]}"
-            )
-        data, samplerate = sf.read(out, dtype="float32", always_2d=True)
-    return data, samplerate
+            f"File audio non leggibile: {path.name}. Dettaglio: {exc}"
+        ) from exc
+    if not chunks:
+        raise UnsupportedFormatError(f"File audio vuoto: {path.name}")
+    data = np.concatenate(chunks, axis=1).astype(np.float32, copy=False)
+    return np.ascontiguousarray(data.T), samplerate
+
+
+def probe_duration(path: Path) -> float | None:
+    """Durata in secondi senza decodificare, o None se il file non si legge."""
+    try:
+        info = sf.info(str(path))
+        return info.frames / info.samplerate
+    except Exception:  # non è un formato soundfile: si prova con FFmpeg
+        pass
+    try:
+        import av
+
+        with av.open(str(path)) as container:
+            if container.duration is not None:
+                return container.duration / av.time_base
+            stream = container.streams.audio[0]
+            if stream.duration is not None and stream.time_base is not None:
+                return float(stream.duration * stream.time_base)
+    except Exception:  # file corrotto o non audio: la stima ricade sul default
+        return None
+    return None
 
 
 def load(path: Path) -> SourceAudio:
@@ -90,7 +118,7 @@ def load(path: Path) -> SourceAudio:
     try:
         data, samplerate = sf.read(path, dtype="float32", always_2d=True)
     except (sf.LibsndfileError, RuntimeError):
-        data, samplerate = _decode_via_ffmpeg(path)
+        data, samplerate = _decode_via_pyav(path)
     frames = data.shape[0]
     if frames == 0:
         raise UnsupportedFormatError(f"File audio vuoto: {path.name}")

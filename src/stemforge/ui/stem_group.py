@@ -59,6 +59,14 @@ class StemGroup(QWidget):
         """Per la casella `Togli il riverbero`: opzione, non strumento."""
         self._panel.layout().addWidget(widget)
 
+    def set_stems_available(self, available: bool) -> None:
+        """Nasconde gli stem di un modello non ancora adottato (§12-M6):
+        un'opzione che produce sempre un avviso è peggio della sua assenza."""
+        for box in self._boxes.values():
+            if not available:
+                box.setChecked(False)
+            box.setVisible(available)
+
     def checked_kinds(self) -> list[StemKind]:
         return [kind for kind, box in self._boxes.items() if box.isChecked()]
 

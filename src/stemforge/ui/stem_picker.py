@@ -100,9 +100,21 @@ class StemPicker(QWidget):
         self._dereverb_box.setStyleSheet("font-style: italic;")
         self._vocal_group.add_option_widget(self._dereverb_box)
         layout.addWidget(self._vocal_group)
+        self._apply_derived_availability()
 
         layout.addStretch(1)
         self._build_bottom(layout)
+
+    def _apply_derived_availability(self) -> None:
+        # §12-M6: un derivato senza modello vero non si mostra affatto
+        options = planning.derived_options()
+        self._drum_group.set_stems_available(options.drum_detail)
+        self._drum_group.setVisible(options.drum_detail)
+        self._vocal_group.set_stems_available(options.vocal_split)
+        self._dereverb_box.setVisible(options.dereverb)
+        if not options.dereverb:
+            self._dereverb_box.setChecked(False)
+        self._vocal_group.setVisible(options.vocal_split or options.dereverb)
 
     def _build_bottom(self, layout: QVBoxLayout) -> None:
         bottom = QHBoxLayout()

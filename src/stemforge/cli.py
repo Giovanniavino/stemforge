@@ -105,9 +105,9 @@ def _emit_console(message: protocol.Message) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from stemforge.engine.device import ensure_ca_bundle
+    from stemforge.engine.device import prepare_runtime_env
 
-    ensure_ca_bundle()  # prima di qualsiasi download (pesi via HTTPS)
+    prepare_runtime_env()  # certificati HTTPS e ripiego MPS, prima di torch
     args = build_parser().parse_args(argv)
     failures: list[str] = []
     backends: BackendCache = {}
@@ -139,13 +139,9 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _probe_duration(source: Path) -> float | None:
-    try:
-        import soundfile as sf
+    from stemforge.engine.audio_io import probe_duration
 
-        info = sf.info(str(source))
-        return info.frames / info.samplerate
-    except Exception:
-        return None
+    return probe_duration(source)
 
 
 if __name__ == "__main__":

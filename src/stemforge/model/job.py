@@ -15,7 +15,7 @@ from stemforge.model.stem import StemKind
 
 QUALITIES = ("fast", "balanced", "best")
 FORMATS = ("wav", "flac")
-DEVICES = ("auto", "cpu", "cuda")
+DEVICES = ("auto", "cpu", "cuda", "mps")
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ class SeparationJob:
     quality: str  # "fast" | "balanced" | "best"
     out_dir: Path
     fmt: str = "wav"  # "wav" | "flac"
-    device: str = "auto"  # "auto" | "cpu" | "cuda"
+    device: str = "auto"  # "auto" | "cpu" | "cuda" | "mps"
     dereverb_vocals: bool = False  # §5.2.3, opzione non stem
 
     def __post_init__(self) -> None:

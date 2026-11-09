@@ -4,34 +4,47 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stemforge"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Separazione stem standalone con consegna drag & drop alla DAW"
 requires-python = ">=3.11,<3.13"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
+# Due pile di librerie, scelte per piattaforma (BUILD_SPEC §2):
+# - Mac Intel: ferma a torch 2.2.2, l'ultima con wheel macOS x86_64, e a
+#   PySide6 6.4.3, l'ultima Qt per macOS < 11. Non alzare mai questi pin.
+# - Mac Apple Silicon e Windows: torch 2.10, l'ultima serie che gira su
+#   OGNI Mac Apple Silicon (macOS 11+); dalla 2.12 serve macOS 14.
+#   Windows usa la stessa pila: i test del dev-box valgono anche per arm64.
 dependencies = [
-    # torch 2.2.2 e' l'ultima versione con wheel macOS x86_64 (BUILD_SPEC §2).
-    # Non alzare mai questo pin finche' il target resta Mac Intel.
-    "torch==2.2.2",
-    "torchaudio==2.2.2",
-    "numpy>=1.26,<2",
-    # ==4.0.1 e non >=: la 4.1 ha aggiunto la dipendenza sphn (Rust, senza
-    # wheel per mac x86_64/cp311) che sul Mac target forza una build da
-    # sorgente con toolchain Rust+CMake. Verificato sul campo l'11-08-2026.
+    "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torch==2.10.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "torchaudio==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "torchaudio==2.10.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    "numpy>=1.26,<2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "numpy>=1.26,<3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+    # ==4.0.1 e non >=: la 4.1 ha aggiunto sphn (Rust, senza wheel per mac
+    # x86_64/cp311), che sul Mac forza una build con Rust+CMake (campo, 11-08-2026)
     "demucs==4.0.1",
     "soundfile>=0.12",
-    # nel bundle PyInstaller mancano i certificati CA di sistema: senza
-    # certifi il download HTTPS dei pesi fallirebbe sul Mac dell'utente
+    # m4a/aac e ogni formato che soundfile non legge: FFmpeg dentro il
+    # pacchetto, nessun programma esterno. 13.1 = l'ultima con wheel per
+    # macOS Intel 10.13+ E Apple Silicon 11+.
+    "av==13.1.0",
+    # nel bundle PyInstaller mancano i certificati CA di sistema
     "certifi>=2024.2",
 ]
 
 [project.optional-dependencies]
-# sul target macOS 10.15 il lock pinna PySide6==6.4.3 (ultima Qt per
-# macOS < 11, BUILD_SPEC §2); il range qui serve solo al dev-box
-ui = ["PySide6>=6.4"]
-dev = ["pytest>=8", "PySide6>=6.4", "pyinstaller>=6.6"]
+ui = [
+    "PySide6==6.4.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "PySide6==6.7.3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
+]
+dev = ["pytest>=8", "pyinstaller>=6.6", "pillow>=10"]
 
 [project.scripts]
 stemforge = "stemforge.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "stemforge.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -1,0 +1,63 @@
+name: Prepara l'ambiente StemForge
+description: >
+  Python giusto per il target, venv installato dal lock con gli hash e
+  senza mai compilare (--only-binary), più gli strumenti di build.
+  Esporta STEMFORGE_PY (il python del venv) per gli step successivi.
+
+inputs:
+  python:
+    description: Versione di Python (3.11 per Mac Intel, 3.12 altrove)
+    required: true
+  lock:
+    description: File di lock della piattaforma
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # macOS: il Python ufficiale di python.org, compilato per macOS 10.9+.
+    # Quello preinstallato sui runner può richiedere un macOS recente, e
+    # PyInstaller porta la sua libpython dentro l'app: l'app erediterebbe
+    # quel minimo e non partirebbe sui Mac più vecchi.
+    - name: Python ufficiale (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        case "${{ inputs.python }}" in
+          3.11) full=3.11.9 ;;
+          3.12) full=3.12.10 ;;
+          *) echo "python non previsto: ${{ inputs.python }}" >&2; exit 1 ;;
+        esac
+        curl -fsSL --retry 3 "https://www.python.org/ftp/python/$full/python-$full-macos11.pkg" -o /tmp/python.pkg
+        sudo installer -pkg /tmp/python.pkg -target /
+        echo "BASE_PY=/Library/Frameworks/Python.framework/Versions/${{ inputs.python }}/bin/python${{ inputs.python }}" >> "$GITHUB_ENV"
+
+    - name: Python (Windows)
+      if: runner.os == 'Windows'
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python }}
+
+    - name: Python base (Windows)
+      if: runner.os == 'Windows'
+      shell: bash
+      run: echo "BASE_PY=$(command -v python)" >> "$GITHUB_ENV"
+
+    - name: Ambiente dal lock
+      shell: bash
+      run: |
+        "$BASE_PY" -m venv .venv
+        if [ -x .venv/bin/python ]; then
+          VPY="$PWD/.venv/bin/python"
+        else
+          # percorso in forma Windows: lo usano anche gli step PowerShell
+          VPY="$(cygpath -w "$PWD/.venv/Scripts/python.exe")"
+        fi
+        "$VPY" -m pip install --upgrade --quiet pip "setuptools>=69" wheel
+        "$VPY" -m pip install --require-hashes \
+          --only-binary :all: --no-binary antlr4-python3-runtime,demucs,dora-search \
+          -r "${{ inputs.lock }}"
+        "$VPY" -m pip install --no-deps --no-build-isolation -e .
+        "$VPY" -m pip install -r packaging/requirements-build.txt
+        "$VPY" -c "import torch, PySide6, av, demucs; print('torch', torch.__version__, '| PySide6', PySide6.__version__, '| av', av.__version__)"
+        echo "STEMFORGE_PY=$VPY" >> "$GITHUB_ENV"

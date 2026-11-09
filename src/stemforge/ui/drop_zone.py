@@ -107,6 +107,10 @@ class DropZone(QWidget):
         if names:
             self._accept([Path(n) for n in names])
 
+    def accept_paths(self, paths: list[Path]) -> None:
+        """File arrivati da fuori (Apri con, riga di comando): stesso filtro del drop."""
+        self._accept(paths)
+
     def _accept(self, paths: list[Path]) -> None:
         accepted, rejected = _collect_audio_files(paths)
         if rejected and not accepted:
