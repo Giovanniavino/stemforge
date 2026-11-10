@@ -53,7 +53,7 @@ Chiave di cache consigliata: hash di `VERSION`, `SOURCE_SHA256`, `build.sh`.
 
 | Profilo | Runner | Comando | Controlli inclusi |
 |---|---|---|---|
-| `legacy-intel` | macOS (Intel; su arm64 cross-compila) | `bash packaging/ffmpeg/build.sh legacy-intel` | `-arch x86_64`, `MACOSX_DEPLOYMENT_TARGET=10.15`, `otool -L` solo librerie di sistema, `packaging/macos/check_min_os.py` (serve `python3`) |
+| `legacy-intel` | macOS (Intel; su arm64 cross-compila) | `bash packaging/ffmpeg/build.sh legacy-intel` | `-arch x86_64`, `MACOSX_DEPLOYMENT_TARGET=10.15`, `lipo -archs` = solo x86_64, `otool -L` solo librerie di sistema, `packaging/macos/check_min_os.py` (serve `python3`) |
 | `mac-arm64` | macOS arm64 | `bash packaging/ffmpeg/build.sh mac-arm64` | come sopra con `-arch arm64`, 11.0 |
 | `linux-x64` | job con `container: quay.io/pypa/manylinux_2_28_x86_64` (fuori dal container lo script ci rientra con docker) | `bash packaging/ffmpeg/build.sh linux-x64` | `NEEDED` solo glibc, nessun simbolo `GLIBC_` oltre 2.28 |
 | `win-x64` | build su **Ubuntu**, collaudo sul runner **Windows** | Ubuntu: `sudo apt-get install -y gcc-mingw-w64-x86-64-win32` e `bash packaging/ffmpeg/build.sh win-x64`, artefatto `out/win-x64/`; Windows (Git Bash): `bash packaging/ffmpeg/check_license.sh packaging/ffmpeg/out/win-x64/ffmpeg.exe`, poi i test con `STEMFORGE_FFMPEG` | `-static` + thread win32: nessuna DLL MinGW (`objdump -p`); licenza statica su Ubuntu, a runtime su Windows |

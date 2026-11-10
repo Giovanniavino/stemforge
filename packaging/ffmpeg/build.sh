@@ -117,6 +117,7 @@ fetch_source() {
 
 macos_flags() {  # $1 arch FFmpeg, $2 arch clang, $3 macOS minimo
   export MACOSX_DEPLOYMENT_TARGET="$3"
+  MAC_ARCH="$2"
   local mflags="-arch $2 -mmacosx-version-min=$3"
   PROFILE_FLAGS=(--arch="$1" --target-os=darwin --cc=clang --enable-pthreads
     --extra-cflags="$mflags" --extra-ldflags="$mflags")
@@ -255,6 +256,10 @@ check_dependencies() {
     linux-x64) check_linux_deps "$bin" ;;
     win-x64) check_win_deps "$bin" ;;
     legacy-intel|mac-arm64)
+      # su un runner dell'altra architettura un --arch ignorato darebbe un
+      # binario nativo del runner: per il Mac del 2012 serve x86_64 e basta
+      [ "$(lipo -archs "$bin")" = "$MAC_ARCH" ] \
+        || die "architettura $(lipo -archs "$bin"), attesa $MAC_ARCH"
       if otool -L "$bin" | tail -n +2 | grep -vE '^[[:space:]]+(/usr/lib/|/System/)'; then
         die "ffmpeg dipende da librerie fuori dal sistema"
       fi
