@@ -28,12 +28,15 @@ runtime_check() {
     fail "configurazione con flag GPL/nonfree/version3"
   fi
   # -L di un build GPL dice "GNU General Public License"; quello LGPL
-  # "GNU Lesser General Public License ... version 2.1"
-  printf '%s\n' "$license" | tr '\n' ' ' | grep -q 'GNU Lesser General Public License' \
+  # "GNU Lesser General Public License ... version 2.1". Il testo va a capo
+  # a meta' frase, e ffmpeg.exe (anche lanciato da WSL) termina le righe
+  # con CRLF: si normalizza tutto a spazi singoli prima di cercare.
+  license="$(printf '%s\n' "$license" | tr '\r\n' '  ' | tr -s ' ')"
+  printf '%s\n' "$license" | grep -q 'GNU Lesser General Public License' \
     || fail "-L non dichiara la GNU Lesser General Public License"
-  printf '%s\n' "$license" | tr '\n' ' ' | grep -q 'version 2\.1 of the License' \
+  printf '%s\n' "$license" | grep -q 'version 2\.1 of the License' \
     || fail "-L non dichiara la versione 2.1"
-  if printf '%s\n' "$license" | grep -q 'GNU General Public License as published'; then
+  if printf '%s\n' "$license" | grep -q 'GNU General Public License'; then
     fail "-L dichiara la GPL"
   fi
   echo "licenza: LGPL 2.1 o successiva (verificata eseguendo -L)"

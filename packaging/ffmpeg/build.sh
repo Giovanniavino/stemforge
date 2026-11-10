@@ -220,23 +220,40 @@ can_run_target() {
   esac
 }
 
+check_linux_deps() {  # $1 binario
+  local newest needed
+  # solo la glibc: qualunque altra .so mancherebbe su qualche distribuzione
+  needed="$(readelf -d "$1" | grep NEEDED \
+    | grep -vE '\[(libc|libm|libpthread|libdl|librt)\.so\.[0-9]+\]|\[ld-linux-x86-64\.so\.2\]' \
+    || true)"
+  [ -z "$needed" ] || die "dipendenze dinamiche oltre la glibc: $needed"
+  newest="$(objdump -T "$1" | grep -oE 'GLIBC_[0-9.]+' | cut -d_ -f2 | sort -V | tail -n1)"
+  log "glibc richiesta: $newest"
+  if [ "$(printf '%s\n%s\n' "$newest" "$GLIBC_MAX" | sort -V | tail -n1)" != "$GLIBC_MAX" ] \
+    && [ "${STEMFORGE_FFMPEG_ALLOW_HOST_GLIBC:-}" != 1 ]; then
+    die "il binario richiede glibc $newest > $GLIBC_MAX"
+  fi
+}
+
+check_win_deps() {  # $1 binario
+  local objdump="${MINGW_PREFIX:-x86_64-w64-mingw32-}objdump" dlls
+  command -v "$objdump" >/dev/null 2>&1 || objdump=objdump
+  dlls="$("$objdump" -p "$1" | grep -i 'DLL Name' | awk '{print $3}')"
+  log "DLL importate: $(printf '%s ' $dlls)"
+  # le DLL di MinGW (libwinpthread-1, libgcc_s_seh-1, libstdc++-6) non
+  # esistono sul PC dell'utente: con -static non devono comparire
+  if printf '%s\n' "$dlls" | grep -iE '^lib[a-z0-9_+-]*\.dll$'; then
+    die "ffmpeg.exe dipende da DLL non di sistema"
+  fi
+}
+
 check_dependencies() {
-  local bin="$OUT/$EXE" newest
+  local bin="$OUT/$EXE"
   case "$PROFILE" in
-    linux-x64)
-      newest="$(objdump -T "$bin" | grep -oE 'GLIBC_[0-9.]+' | cut -d_ -f2 | sort -V | tail -n1)"
-      log "glibc richiesta: $newest"
-      if [ "$(printf '%s\n%s\n' "$newest" "$GLIBC_MAX" | sort -V | tail -n1)" != "$GLIBC_MAX" ] \
-        && [ "${STEMFORGE_FFMPEG_ALLOW_HOST_GLIBC:-}" != 1 ]; then
-        die "il binario richiede glibc $newest > $GLIBC_MAX"
-      fi ;;
-    win-x64)
-      if "${MINGW_PREFIX:-x86_64-w64-mingw32-}objdump" -p "$bin" | grep -i 'DLL Name' \
-        | grep -iE 'lib[a-z0-9_+-]*\.dll'; then
-        die "ffmpeg.exe dipende da DLL non di sistema"
-      fi ;;
+    linux-x64) check_linux_deps "$bin" ;;
+    win-x64) check_win_deps "$bin" ;;
     legacy-intel|mac-arm64)
-      if otool -L "$bin" | tail -n +2 | grep -vE '^\s+(/usr/lib/|/System/)'; then
+      if otool -L "$bin" | tail -n +2 | grep -vE '^[[:space:]]+(/usr/lib/|/System/)'; then
         die "ffmpeg dipende da librerie fuori dal sistema"
       fi
       python3 "$REPO/packaging/macos/check_min_os.py" "$OUT" "$MACOSX_DEPLOYMENT_TARGET" ;;
