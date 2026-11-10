@@ -31,6 +31,7 @@ _LONG_WAIT_S = 600.0
 _REFRESH_MS = 2000  # §8.3: tempo rimanente aggiornato ogni 2 s
 _BAR_STEPS = 1000
 _MIN_PROGRESS_FOR_ETA = 0.005  # sotto, la stima è solo rumore
+_ANNOUNCE_STEP_PERCENT = 25  # lo screen reader sente 25/50/75%, non ogni punto
 
 
 class ProgressView(QWidget):
@@ -49,6 +50,10 @@ class ProgressView(QWidget):
 
         self._bar = QProgressBar()
         self._bar.setRange(0, _BAR_STEPS)
+        # il testo dentro la barra starebbe metà sull'arancio e metà sullo
+        # sfondo: nessun colore è leggibile su entrambi (WCAG AA). La
+        # percentuale va nell'etichetta sotto, su sfondo pieno
+        self._bar.setTextVisible(False)
         layout.addWidget(self._bar)
 
         self._remaining = QLabel("")
@@ -75,6 +80,8 @@ class ProgressView(QWidget):
         self._started_at = 0.0
         self._value = 0.0
         self._smoothed_s: float | None = None
+        self._remaining_text = ""
+        self._announced_percent = 0
         self._phase_is_default = True
         self._retranslate()
 
@@ -98,11 +105,13 @@ class ProgressView(QWidget):
         self._bar.setValue(0)
         self._phase_is_default = True
         self._phase.setText(translate("ProgressView", "Preparing…"))
-        self._remaining.setText("")
         self._warnings.setText("")
         self._started_at = time.monotonic()
         self._value = 0.0
         self._smoothed_s = None
+        self._remaining_text = ""
+        self._announced_percent = 0
+        self._show_status()
         self._timer.start()
 
     def stop(self) -> None:
@@ -118,6 +127,23 @@ class ProgressView(QWidget):
     def set_progress(self, value: float) -> None:
         self._value = value
         self._bar.setValue(int(value * _BAR_STEPS))
+        self._show_status()
+        percent = self.percent()
+        milestone = percent - percent % _ANNOUNCE_STEP_PERCENT
+        if self._announced_percent < milestone < 100:
+            self._announced_percent = milestone
+            a11y.announce(self._bar, translate("ProgressView", "{percent}% done").format(
+                percent=milestone
+            ))
+
+    def percent(self) -> int:
+        return int(self._value * 100)
+
+    def _show_status(self) -> None:
+        parts = [f"{self.percent()}%"]
+        if self._remaining_text:
+            parts.append(self._remaining_text)
+        self._remaining.setText("  ·  ".join(parts))
 
     def add_warning(self, message: str) -> None:
         current = self._warnings.text()
@@ -139,7 +165,8 @@ class ProgressView(QWidget):
             text = translate("ProgressView", "{remaining} — ready around {time}").format(
                 remaining=text, time=eta
             )
-        self._remaining.setText(text)
+        self._remaining_text = text
+        self._show_status()
 
 
 def format_remaining(seconds: float) -> str:

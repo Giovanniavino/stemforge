@@ -172,6 +172,10 @@ class StemPicker(QWidget):
         self._format = QComboBox()
         self._format.addItem("WAV", userData="wav")
         self._format.addItem("FLAC", userData="flac")
+        # il default (AdjustToContentsOnFirstShow) misura una volta sola:
+        # dopo un cambio di lingua la voce più lunga resterebbe tagliata
+        for combo in (self._quality, self._format):
+            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._quality_label = QLabel()
         self._quality_label.setBuddy(self._quality)
         self._format_label = QLabel()

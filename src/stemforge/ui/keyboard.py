@@ -16,7 +16,7 @@ from typing import Callable
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QKeySequence, QShortcut
-from PySide6.QtWidgets import QAbstractButton, QApplication, QWidget
+from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QWidget
 
 
 def install(
@@ -41,10 +41,12 @@ def install(
 
 
 def click_focused_button(window: QWidget) -> bool:
-    """Fuori dalla scelta strumenti Invio preme il pulsante col focus:
-    fuori da un QDialog Qt lo farebbe solo con la barra spaziatrice."""
+    """Invio preme il pulsante col focus, come in un dialogo: fuori da un
+    QDialog Qt lo farebbe solo con la barra spaziatrice. Le caselle no:
+    in un dialogo Invio su una casella attiva il pulsante predefinito
+    (qui Separa), non la spunta."""
     focused = QApplication.focusWidget()
-    if isinstance(focused, QAbstractButton) and window.isAncestorOf(focused):
+    if isinstance(focused, (QPushButton, QToolButton)) and window.isAncestorOf(focused):
         if focused.isEnabled() and focused.isVisible():
             focused.click()
             return True

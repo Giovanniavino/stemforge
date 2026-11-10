@@ -50,10 +50,6 @@ def _setup_logging() -> None:
     root.addHandler(handler)
 
 
-def _default_out_dir() -> Path:
-    return Path.home() / "Music" / "StemForge"
-
-
 def _paths_from_argv(args: list[str]) -> list[Path]:
     # -psn_... è l'argomento che i macOS più vecchi aggiungono al lancio dal Finder
     return [Path(arg) for arg in args if not arg.startswith("-")]
@@ -64,16 +60,20 @@ def _paths_from_argv(args: list[str]) -> list[Path]:
 
 def _ui_check() -> str:
     """L'interfaccia si costruisce dentro il pacchetto: plugin Qt, stile,
-    finestra principale e lettore di anteprima."""
+    traduzioni, finestra principale e lettore di anteprima."""
     os.environ["QT_QPA_PLATFORM"] = "offscreen"
     from PySide6.QtWidgets import QApplication
 
+    from stemforge.ui import i18n, theme
     from stemforge.ui.main_window import MainWindow
     from stemforge.ui.result_view import ResultView
-    from stemforge.ui.theme import STYLESHEET
 
     app = QApplication.instance() or QApplication([sys.argv[0]])
-    app.setStyleSheet(STYLESHEET)
+    theme.apply_theme(app)
+    # un .qm rimasto fuori dal pacchetto darebbe l'interfaccia inglese a
+    # chi ha il sistema in italiano, senza nessun errore visibile
+    if not i18n.apply_language("it"):
+        raise RuntimeError(f"traduzione italiana mancante in {i18n.i18n_dir()}")
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         window = MainWindow(out_dir=Path(tmp))
         window.show()
@@ -82,7 +82,8 @@ def _ui_check() -> str:
         preview._ensure_player()
         app.processEvents()
         window.close()
-    return "finestra principale e lettore di anteprima costruiti"
+    i18n.apply_language(i18n.preferred_language())
+    return "finestra principale, traduzioni e lettore di anteprima costruiti"
 
 
 def _selftest(args: list[str]) -> int:
@@ -144,14 +145,16 @@ def main() -> int:
     if "--selftest" in sys.argv:
         return _selftest(sys.argv)
 
+    from stemforge.ui import conventions, i18n, theme
     from stemforge.ui.main_window import MainWindow
-    from stemforge.ui.theme import STYLESHEET
 
     _setup_logging()
     app = _make_app(sys.argv)
     app.setApplicationName("StemForge")
-    app.setStyleSheet(STYLESHEET)
-    window = MainWindow(out_dir=_default_out_dir())
+    # la lingua prima dei widget: nessun testo nasce nella lingua sbagliata
+    i18n.apply_language(i18n.preferred_language())
+    theme.apply_theme(app)
+    window = MainWindow(out_dir=conventions.default_output_dir())
     window.show()
     window.run_first_start_if_needed()
     app.set_file_handler(window.open_files)

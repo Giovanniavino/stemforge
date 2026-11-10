@@ -108,10 +108,13 @@ class MainWindow(QMainWindow):
         self._drop.choose_files()
 
     def _on_return(self) -> None:
+        # Separa è il pulsante predefinito della scelta strumenti: Invio lo
+        # preme da una casella o da un menu, mentre su "Tutto" o "Indietro"
+        # preme quello, come farebbe un dialogo
+        if keyboard.click_focused_button(self):
+            return
         if self._stack.currentWidget() is self._picker:
             self._picker.request_start()
-        else:
-            keyboard.click_focused_button(self)
 
     def _on_escape(self) -> None:
         current = self._stack.currentWidget()
