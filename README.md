@@ -5,11 +5,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%2010.15%2B%20Intel-black" alt="platform">
-  <img src="https://img.shields.io/badge/python-3.12-blue" alt="python">
-  <img src="https://img.shields.io/badge/milestones-M1--M3%20complete-brightgreen" alt="milestones">
+  <img src="https://img.shields.io/badge/macOS-10.15%2B%20Intel%20%C2%B7%2011%2B%20Apple%20Silicon-black" alt="macOS">
+  <img src="https://img.shields.io/badge/Windows-10%20%2F%2011%20x64-blue" alt="Windows">
+  <img src="https://img.shields.io/badge/Linux-x64%20AppImage-orange" alt="Linux">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="license">
 </p>
+
+<p align="center"><a href="docs/it/README.md">Guida in italiano</a></p>
 
 ---
 
@@ -17,119 +19,373 @@ Drop in a song, tick the instruments you want, hit **Separate**. Then drag
 the stems straight into the Ableton project — or any DAW — you already have
 open.
 
-No plugin to install, no new project to open, no import step.
+No plugin to install, no new project to open, no import step. No account,
+no cloud: everything runs on your computer.
 
 ```
   song.mp3  ─→  pick your instruments  ─→  drag  ─→  your project
 ```
 
-## What it runs on
+**Contents** —
+[Which file to download](#which-file-to-download) ·
+[Requirements](#requirements) ·
+[Install](#install) ·
+[First launch](#first-launch) ·
+[Usage](#usage) ·
+[How long it takes](#how-long-it-takes) ·
+[The app won't open](#the-app-wont-open) ·
+[FAQ](#faq) ·
+[Troubleshooting](#troubleshooting) ·
+[Diagnostics](#export-diagnostics) ·
+[Support](#support-and-donations) ·
+[Development](#development)
 
-Target: **macOS 10.15+ (Catalina), Intel Macs, CPU only** — a 2012 Mac mini
-is enough.
+## Which file to download
 
-Quality comes before speed: the default preset is `Best`, and the wait —
-however long — is stated honestly up front, calibrated to how fast your Mac
-actually is.
+Every release on the [Releases page](https://github.com/Giovanniavino/stemforge/releases)
+contains one file per kind of computer. Pick the row that matches yours:
+
+| Your computer | Download | Acceleration |
+|---|---|---|
+| Mac with Apple chip (M1, M2, M3, M4…), macOS 11 Big Sur or later | `StemForge-<version>-macos-arm64.dmg` | Apple GPU, after a correctness check |
+| Mac with Intel processor, macOS 10.15 Catalina or later | `StemForge-<version>-macos-x86_64.dmg` | CPU only |
+| PC with Windows 10 (1809 or later) or Windows 11, 64-bit | `StemForge-<version>-windows-x64-setup.exe` | CPU only |
+| PC with Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 or later) | `StemForge-<version>-linux-x64.AppImage` | CPU only |
+
+Not sure which Mac you have? Apple menu  → **About This Mac**: "Chip Apple
+M…" means Apple Silicon, "Processor Intel…" means Intel. The Intel build
+also runs on Apple Silicon through Rosetta, but slower and without the GPU:
+take the `arm64` file.
+
+Windows on ARM runs the x64 build through Windows' own emulation.
+
+Each release also contains `SHA256SUMS.txt`, to check that the file you
+downloaded is exactly the one published ([how](#check-the-sha-256)).
+
+## Requirements
+
+| Profile | Minimum system |
+|---|---|
+| Mac Intel (`legacy-intel`) | macOS 10.15 Catalina, any Intel Mac that runs it (a 2012 Mac mini is enough) |
+| Mac Apple Silicon (`mac-arm64`) | macOS 11 Big Sur — every Apple Silicon Mac |
+| Windows (`win-x64`) | Windows 10 version 1809 or Windows 11, x64 |
+| Linux (`linux-x64`) | glibc 2.28 or newer (Ubuntu 20.04, Debian 11, Fedora 29 and later), x64 |
+
+- **Disk:** about 1 GB for the separation models (downloaded once), plus
+  room for your stems: a 24-bit stereo stem takes about 15 MB per minute of
+  audio. StemForge checks the free space *before* it starts.
+- **Memory:** 8 GB of RAM is comfortable. With less, close other apps or
+  pick the `Fast` preset.
+- **Internet:** only once, on first launch, to download the models.
+
+Linux is a second-tier platform: it is built and tested automatically, but
+it gets less hands-on testing than macOS and Windows.
 
 ## Install
 
-Send the user `dist/StemForge-Installer.zip`, regenerated with
-`make installer`. Double-click **"Installa StemForge.command"** and it
-handles the rest.
+**Mac** — open the `.dmg` and drag **StemForge** into **Applications**.
+The first time, macOS will warn you that the developer can't be verified:
+see [The app won't open](#the-app-wont-open).
 
-On first launch the app downloads the models (~1 GB, once). After that it
-never touches the network again: no account, no telemetry.
+**Mac mini and other old Intel Macs (alternative)** — the
+`StemForge-Installer.zip` package builds the app directly on your Mac.
+Unzip it, double-click **"Installa StemForge.command"** and follow the
+Terminal. It needs an internet connection during installation (it
+downloads the official Python and the libraries, each verified by
+SHA-256).
+
+**Windows** — run `StemForge-<version>-windows-x64-setup.exe`. No
+administrator rights are needed (the installer offers "install for all
+users" if you want it). You get a Start menu entry, an optional desktop
+icon and an "Open with" entry for audio files — your default player is
+left alone.
+
+**Linux** — make the file executable and run it:
+
+```bash
+chmod +x StemForge-<version>-linux-x64.AppImage
+./StemForge-<version>-linux-x64.AppImage
+```
+
+## First launch
+
+The first launch does three things, each with its own progress bar — never
+a blank window:
+
+1. **Downloads the separation models** (about 1 GB, once) from the official
+   Demucs server, `dl.fbaipublicfiles.com`. Every file is checked against a
+   fixed SHA-256: a download interrupted halfway is detected and fetched
+   again. Without a connection the app tells you so: it needs the network
+   this one time, then it works offline forever.
+2. **Checks the GPU — Apple Silicon only.** Before StemForge trusts the
+   Apple GPU it separates the same short synthetic audio on the GPU and on
+   the CPU and compares the results. Only if they match is the GPU used;
+   otherwise StemForge stays on the CPU, which is slower but always correct.
+   If the GPU ever fails during a job, that pass is redone on the CPU with a
+   notice.
+3. **Calibrates:** *"Measuring this computer's speed to give you honest
+   estimates."* A short benchmark measures how fast your machine separates
+   audio. Every time estimate you will see comes from this measurement,
+   and it keeps improving with every song you separate.
 
 ## Usage
 
-1. Drop a song into the window.
-2. Tick the instruments. **The time estimate updates with every tick:
-   asking for less costs less.**
-3. Hit Separate.
-4. When it's done, select the stems and drag them into your arrangement:
-   one track per file, sample-aligned.
+1. **Drop a song** into the window (or choose a file): `wav`, `mp3`,
+   `flac`, `ogg`, `m4a`, `aiff`, `aif`. Several files or whole folders work
+   too.
+2. **Tick the instruments**: vocals, drums, bass, guitar, piano, other,
+   instrumental. Two shortcuts at the top: **Everything** and **Vocals
+   only**. The time estimate updates with every tick — *asking for less
+   costs less.*
+3. Press **Separate**. You can cancel at any time: the work stops within a
+   second and no half-written files are left behind.
+4. When it's done, **select the stems and drag them into your DAW**: one
+   track per file, sample-aligned with the original. You can preview each
+   stem before dragging, or open the folder (**Show in Finder** / **Show in
+   Explorer**).
 
-Stems land in `~/Music/StemForge/<song name>/` as 24-bit WAV or FLAC, with
-a `manifest.json` next to them.
+Stems land in `~/Music/StemForge/<song name>/` as 24-bit WAV (or FLAC),
+with the same sample rate and exactly the same length in samples as your
+original, plus a `manifest.json`. No normalization, no limiting, no fades:
+the stems add back up to the mix.
 
-### From the command line
+**Quality presets:** `Best` *(default — always the full model ensemble,
+no shortcuts)*, `Balanced` *(faster: runs only the parts of the model you
+asked for)*, `Fast` *(previews)*. **Vocals only** switches to `Balanced`
+on its own.
+
+Drum detail (kick, snare, toms, hi-hat, cymbals), lead/backing vocals and
+vocal de-reverb appear in the app only once their models pass the quality
+bar: an option that doesn't sound good isn't shown.
+
+The interface is in English and Italian (it follows your system), works
+fully from the keyboard (Enter = Separate, Esc = Cancel/Back,
+Cmd/Ctrl+O = choose file) and with VoiceOver / NVDA.
+
+## How long it takes
+
+There is no single number: separation runs on your CPU (or, on Apple
+Silicon, on a verified GPU), and machines differ enormously. What
+StemForge promises instead:
+
+- **Before you start, it tells you how long it will take on *your*
+  computer** — from the first-launch calibration, never from a number
+  measured on someone else's machine. The estimate is deliberately 15% on
+  the pessimistic side, and next to it you see how many passes will run
+  (e.g. *"~14 min · 4 passes"*).
+- **Time scales with what you ask for.** In `Balanced`, vocals alone take
+  about a quarter of the time of all four base stems; vocals + drums about
+  half. Drum and vocal detail add short extra passes on top.
+- **`Best` costs more, on purpose**: roughly three times the full
+  `Balanced` separation. On an old Intel Mac that can mean more than an
+  hour for one song — the app says so up front, and `Balanced` is one
+  click away.
+
+Absolute times measured on the reference Intel Mac (CPU) will be published
+here once measured on that machine.
+
+## The app won't open
+
+StemForge is not signed with a paid Apple or Microsoft certificate yet, so
+the system warns you the first time. That warning is expected; what
+matters is that the file is the one we published —
+[check the SHA-256](#check-the-sha-256) first. You only have to do this
+once.
+
+### macOS 10.15 Catalina to 14 Sonoma
+
+1. Open the **Applications** folder in Finder.
+2. **Control-click** (or right-click) **StemForge** → **Open**.
+3. In the dialog, click **Open** again.
+
+If there is no **Open** button: try to open the app once, then go to
+**System Preferences / System Settings → Security & Privacy (Privacy &
+Security) → General**, and click **Open Anyway** next to the StemForge
+message.
+
+### macOS 15 Sequoia and later
+
+Control-click → Open no longer bypasses the warning.
+
+1. Double-click StemForge. When macOS says it was not opened, click **Done**.
+2. Open **System Settings → Privacy & Security** and scroll down to
+   **Security**.
+3. Next to *"StemForge" was blocked…* click **Open Anyway**, confirm with
+   your password or Touch ID, then click **Open**.
+
+### "StemForge is damaged and can't be opened" (macOS)
+
+This can happen when a download tool strips or alters the signature.
+First check the SHA-256. If it matches, remove the download quarantine
+flag in Terminal, then open the app as above:
 
 ```bash
-stemforge song.mp3 --stems vocals,drums,bass,other
-stemforge song.mp3 --stems vocals --quality balanced   # ~1/4 of the time
-stemforge song.mp3 --stems kick,snare --dry-run        # print the plan
+xattr -dr com.apple.quarantine /Applications/StemForge.app
 ```
 
-## Tracks
+### Windows — SmartScreen
 
-**Base** — `vocals` `drums` `bass` `guitar` `piano` `other` `instrumental`
+1. On the blue *"Windows protected your PC"* screen, click **More info**.
+2. Click **Run anyway**.
 
-**Derived** — `kick` `snare` `toms` `hihat` `cymbals` `lead_vocals`
-`backing_vocals`, plus vocal de-reverb *(landing with M6)*
+If your browser blocks the download ("isn't commonly downloaded"), open
+the download list, choose **Keep** → **Keep anyway**.
 
-Presets: `fast`, `balanced`, `best` *(default)*.
+### Linux — the AppImage doesn't start
 
-## Time scales with what you ask for
+- Make sure it is executable: `chmod +x StemForge-*.AppImage`.
+- If it complains about **FUSE**, install your distribution's FUSE package,
+  or start it without FUSE: `./StemForge-<version>-linux-x64.AppImage --appimage-extract-and-run`.
 
-This is the design choice the whole project is built around: asking for a
-single track should cost a fraction of asking for all of them, not the same
-time with fewer files at the end.
+### Check the SHA-256
 
-| Machine | Request (`balanced`) | Time |
+Download `SHA256SUMS.txt` from the same release and compare:
+
+| System | Command | Compare with |
 |---|---|---|
-| x86 CPU dev box (Windows) | 30 s of audio, `vocals` only | 23 s |
-| x86 CPU dev box (Windows) | 30 s of audio, 4 stems | 130 s |
-| Reference Intel Mac | *to be measured on target* | — |
+| macOS | `shasum -a 256 ~/Downloads/StemForge-*.dmg` | the line for that file in `SHA256SUMS.txt` |
+| Windows (PowerShell) | `Get-FileHash $HOME\Downloads\StemForge-*-setup.exe -Algorithm SHA256` | same |
+| Linux | `sha256sum -c SHA256SUMS.txt --ignore-missing` (in the download folder) | prints `OK` |
 
-The measured ratio between "one track" and "everything" is **0.18**. On
-`best`, times grow roughly 10x over `balanced`: that's the stated price of
-maximum quality, and the in-app estimate says so before you commit.
+If the value differs, **don't open the file**: download it again from the
+Releases page.
 
-## Status
+## FAQ
 
-| Milestone | |
+**Does it send my music anywhere?** No. Separation happens entirely on
+your computer. The only network connection StemForge ever makes is the
+one-time model download. No account, no telemetry, no auto-update. See
+[PRIVACY.md](PRIVACY.md).
+
+**Which DAWs does it work with?** Any DAW that accepts files dragged from
+the desktop: StemForge uses the operating system's own drag & drop, with
+no code specific to any DAW. It is designed and checked by hand against
+Ableton Live, Logic Pro, FL Studio, Reaper, Cubase, Studio One and Bitwig.
+
+**Why isn't it a VST/AU plugin?** A plugin runs on the DAW's audio thread,
+with a few milliseconds per buffer and a hard ban on allocating memory.
+Neural separation needs minutes and gigabytes of RAM. The two are
+fundamentally incompatible: every product offering separation "inside a
+plugin" in fact processes offline and hands back files, exactly like
+StemForge.
+
+**Will it use my NVIDIA / AMD / Intel GPU on Windows or Linux?** Not in
+this version. A GPU build of PyTorch weighs about 2.5 GB, more than the
+2 GB per-file limit of GitHub releases, and would be a huge download for
+everyone without that GPU. AMD/Intel acceleration on Windows (DirectML)
+cannot run the models' core operation. Only the Apple Silicon GPU is used,
+and only after it has proven to give the same result as the CPU.
+
+**Why is it so slow on my old Mac?** Quality comes first: the default
+preset gives the best stems the models can produce. Choose `Balanced` or
+**Vocals only** when you are in a hurry.
+
+**What about long files?** Files over 15 minutes are processed in blocks
+that join seamlessly; files over 30 minutes are refused with an
+explanation.
+
+**Mono, surround, odd sample rates?** Mono stays mono. 5.1/7.1 files are
+mixed down to stereo (with a notice) and the stems are stereo. Any sample
+rate goes in, and the stems come out at that same rate.
+
+**Can it make drum kits, slices, loops, or remove reverb from a mix?** No:
+StemForge separates and delivers stems, and nothing else. Slicing, kits,
+effects and editing belong in your DAW or sampler.
+
+**Is it free?** Yes, and open source under the MIT license. If it is
+useful to you, see [Support and donations](#support-and-donations).
+
+## Troubleshooting
+
+| Message or symptom | What to do |
 |---|---|
-| M1 · engine, planner, CLI | ✅ |
-| M2 · standalone app | ✅ |
-| M3 · drag & drop | ✅ |
-| M4 · quality (RoFormer) | ⬜ |
-| M5 · polish and notarization | ⬜ |
-| M6 · derived tracks | ⬜ |
+| "Not enough memory" | Close other apps, or use the `Fast` preset. The job can be started again. |
+| "Not enough disk space" | StemForge checks before starting: free the space it indicates, or choose another output folder. |
+| The model download fails | Check the connection; a firewall or proxy must let you reach `dl.fbaipublicfiles.com`. Press retry: files already downloaded are kept. |
+| A file is refused when dropped | The format isn't supported, or it isn't audio. DRM-protected files (e.g. `.m4p` purchases from the old iTunes Store, Apple Music downloads) cannot be read. |
+| "Almost silent" notice on a stem | That instrument is (nearly) absent from the song. The file is written anyway. |
+| One song in a batch fails | The others carry on; you get a summary at the end. |
+| The estimate was wrong | It improves with every completed job. If it is far off, [export diagnostics](#export-diagnostics) and open an issue. |
+| Dragging into the DAW does nothing | Drag the stems into a track area/arrangement, not onto a plugin. Or use **Show in Finder/Explorer** and drag from there. |
+
+Where StemForge keeps its files:
+
+| | Models and calibration | Log |
+|---|---|---|
+| macOS | `~/Library/Application Support/StemForge/` | `~/Library/Logs/StemForge/` |
+| Windows | `%LOCALAPPDATA%\StemForge\` | `%LOCALAPPDATA%\StemForge\logs\` |
+| Linux | `~/.local/share/stemforge/` (or `$XDG_DATA_HOME/stemforge/`) | `~/.local/state/stemforge/` |
+
+**Uninstall** — macOS: drag StemForge from Applications to the Trash, and
+delete the two folders above if you want the ~1 GB back. Windows: Settings
+→ Apps → StemForge → Uninstall; the uninstaller asks whether to delete the
+models and calibration too. Linux: delete the AppImage and the folders
+above.
+
+## Export diagnostics
+
+If something goes wrong, StemForge can put everything needed to understand
+it into one file — nothing is sent anywhere:
+
+1. On the start screen, click **Export diagnostics** (on macOS also
+   **Help → Export diagnostics**).
+2. Choose where to save the zip.
+3. Look inside if you like: it contains the log, the StemForge version,
+   your system, the result of the built-in self-test (offline), and the
+   GPU check results. **The log contains the names of the songs you
+   processed** — you decide whether and to whom to send it.
+4. Attach it to a [bug report](https://github.com/Giovanniavino/stemforge/issues/new/choose).
+
+Advanced: the same self-test can be run from a terminal, writing its result
+to a file:
+
+```bash
+# macOS
+/Applications/StemForge.app/Contents/MacOS/StemForge --selftest --offline --report ~/Desktop/selftest.txt
+# Linux
+./StemForge-<version>-linux-x64.AppImage --selftest --offline --report ~/selftest.txt
+```
+
+On Windows: `StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.txt"`
+from the installation folder (by default `%LOCALAPPDATA%\Programs\StemForge`).
+
+## Support and donations
+
+- **Bugs and questions:** [GitHub Issues](https://github.com/Giovanniavino/stemforge/issues/new/choose).
+  Please attach the diagnostics file.
+- **Donations:** StemForge is free and will stay free. Donation links are
+  not set up yet; when they are, they will appear here and as the
+  **Sponsor** button of the repository.
 
 ## Development
 
+Contributions are welcome — read **[CONTRIBUTING.md](CONTRIBUTING.md)**
+first. The full specification, with every decision and the reasoning
+behind it, is in **[BUILD_SPEC.md](BUILD_SPEC.md)** (Italian).
+
+From source, the same pipeline runs headless:
+
 ```bash
-make dev        # venv + pinned dependencies (hash-verified)
-make test       # fast suite (<10 s, no models)
-make test-slow  # with real Demucs (downloads weights)
-make build      # x86_64 .app via PyInstaller (macOS only)
+stemforge song.mp3 --stems vocals,drums,bass,other
+stemforge song.mp3 --stems vocals --quality balanced   # about 1/4 of the time
+stemforge song.mp3 --stems vocals,drums --dry-run      # print the plan
 ```
-
-On Windows (dev box): `py -3.12 -m venv .venv` then
-`pip install -r requirements-dev-win.lock`.
-
-The full specification, with every decision and the reasoning behind it, is
-in **[BUILD_SPEC.md](BUILD_SPEC.md)**.
-
-Hard rules enforced by tests: no file over 400 lines, dependencies flow one
-way only, `model/` does no I/O, the UI never touches the engine.
-
-## Why it isn't a VST plugin
-
-A plugin runs on the DAW's audio thread, with a few milliseconds per buffer
-and a hard ban on allocating memory. Neural separation needs tens of seconds
-and gigabytes of RAM. That isn't an implementation limit — the two are
-fundamentally incompatible.
-
-Every product offering separation "inside a plugin" does exactly what
-StemForge does: processes offline and hands back files.
 
 ## Built on
 
-[Demucs](https://github.com/adefossez/demucs) by Alexandre Défossez and Meta
-AI Research · [PyTorch](https://pytorch.org) · [Qt](https://www.qt.io)
+[Demucs](https://github.com/facebookresearch/demucs) by Alexandre Défossez
+and Meta AI Research · [PyTorch](https://pytorch.org) ·
+[Qt for Python](https://www.qt.io/qt-for-python) ·
+[libsndfile](https://libsndfile.github.io/libsndfile/) ·
+[FFmpeg](https://ffmpeg.org) (LGPL build). Every bundled component and its
+license is listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
+
+## Ideas
+
+Ideas that are not in the specification are collected here instead of
+being built (BUILD_SPEC §11, rule 10). None recorded yet.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Third-party components keep their own
+licenses: see [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
