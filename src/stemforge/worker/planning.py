@@ -12,13 +12,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stemforge.engine import calibrate
+from stemforge.engine.decode import SUPPORTED_EXTENSIONS
 from stemforge.engine.planner import estimate_seconds, plan
 from stemforge.model.job import SeparationJob
 
 # Sovrastima del 15%: finire prima è un piacere, dopo è un difetto (§8.2.1).
 ESTIMATE_MARGIN = 1.15
 
-SUPPORTED_SUFFIXES = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aiff", ".aif"}
+# Una sola lista dei formati, quella del motore: il drop rifiuta ESATTAMENTE
+# ciò che il caricamento non saprebbe leggere (§10.1).
+SUPPORTED_SUFFIXES = SUPPORTED_EXTENSIONS
 
 
 @dataclass(frozen=True)
@@ -61,7 +64,7 @@ def summarize(job: SeparationJob, duration_s: float) -> PlanSummary:
 def probe_duration(path: Path) -> float | None:
     """Durata del file, o None se non leggibile. Vive qui e non nell'UI
     perché decodificare è lavoro del motore (vietato nei widget, §8.5)."""
-    from stemforge.engine.audio_io import probe_duration as probe
+    from stemforge.engine.decode import probe_duration as probe
 
     return probe(path)
 

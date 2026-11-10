@@ -21,6 +21,23 @@ class UserFacingError(Exception):
         super().__init__(f"{key}({shown})" + (f": {detail}" if detail else ""))
 
 
+class UnsupportedFormatError(UserFacingError, ValueError):
+    """File che non si decodifica: corrotto, DRM, formato sconosciuto,
+    decoder assente. Si rifiuta al drop, non a metà (§10.1)."""
+
+
+class TooLongError(UserFacingError, ValueError):
+    """Brano oltre il limite duro dei 30 minuti (§5.7 regola 6)."""
+
+
+class NonFiniteAudioError(UserFacingError, ValueError):
+    """NaN o ±Inf nei campioni: mai passarli al modello (§5.7 regola 8)."""
+
+
+class DeviceUnavailableError(UserFacingError, RuntimeError):
+    """L'utente ha forzato un acceleratore che questa macchina non ha."""
+
+
 class InsufficientDiskError(UserFacingError, RuntimeError):
     """Il controllo PRIMA di iniziare (§10.1) dice che lo spazio non basta.
 

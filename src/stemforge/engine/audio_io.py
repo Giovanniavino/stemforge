@@ -1,13 +1,14 @@
-"""I/O audio del motore: decodifica, resampling, blocchi per file lunghi.
+"""I/O audio del motore: caricamento, resampling, blocchi per file lunghi.
 
 BUILD_SPEC §5.7. La SCRITTURA degli stem non sta qui ma in export/folder.py:
 il diagramma delle dipendenze (§3) vieta a export di importare engine, e i
-due mondi condividono solo numpy.
+due mondi condividono solo numpy. La decodifica sta in decode.py.
 
-- Decodifica sempre a float32 (regola 1).
-- soundfile copre wav/flac/ogg/aiff/mp3; tutto il resto (m4a/aac in
-  primis) passa da PyAV, che porta FFmpeg dentro il pacchetto: nessun
-  programma esterno da installare, su nessuna piattaforma.
+- Decodifica sempre a float32 (regola 1), con TUTTI i canali del file.
+- Multicanale: downmix stereo ITU-R BS.775 (regola 7, engine/downmix.py),
+  dichiarato all'utente con un avviso dalla pipeline. Tenere i primi due
+  canali butterebbe via il centro, cioè la voce.
+- NaN/Inf: il file si rifiuta (regola 8), mai si passa al modello.
 - Il resampling usa torchaudio (sinc kaiser di qualità) ed è pigro:
   i test unitari girano senza torch.
 - File lunghi: blocchi con rampe lineari COMPLEMENTARI che sommano a 1
@@ -17,11 +18,24 @@ due mondi condividono solo numpy.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-import soundfile as sf
+
+from stemforge.engine import decode, downmix
+from stemforge.engine.decode import SUPPORTED_EXTENSIONS, probe_duration
+from stemforge.engine.errors import (
+    NonFiniteAudioError,
+    TooLongError,
+    UnsupportedFormatError,
+)
+
+__all__ = [
+    "SUPPORTED_EXTENSIONS", "NonFiniteAudioError", "TooLongError",
+    "UnsupportedFormatError", "probe_duration",
+]
 
 MODEL_SAMPLERATE = 44100
 MAX_DURATION_S = 30 * 60  # limite duro (§5.7 regola 6)
@@ -29,116 +43,72 @@ BLOCK_THRESHOLD_S = 15 * 60
 BLOCK_LENGTH_S = 300.0
 BLOCK_OVERLAP_S = 2.0
 
-SUPPORTED_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aiff", ".aif"}
-
-
-class UnsupportedFormatError(ValueError):
-    """Formato non decodificabile: da rifiutare al drop, non a metà (§10.1)."""
-
-
-class TooLongError(ValueError):
-    """Brano oltre il limite duro dei 30 minuti (§5.7)."""
-
 
 @dataclass(frozen=True)
 class SourceAudio:
-    data: np.ndarray  # [channels, samples] float32
+    data: np.ndarray  # [channels, samples] float32, sempre stereo per il modello
     samplerate: int
-    original_channels: int  # per riscrivere mono in uscita (regola 3)
+    original_channels: int  # canali degli stem in uscita: 1 o 2 (regole 3 e 7)
     original_frames: int  # lunghezza esatta da restituire (regola 2)
+    source_channels: int = 2  # canali del file; > 2 = downmix dichiarato
 
     @property
     def duration_s(self) -> float:
         return self.original_frames / self.samplerate
 
-
-def _decode_via_pyav(path: Path) -> tuple[np.ndarray, int]:
-    """Decodifica con FFmpeg (via PyAV): [frames, channels] float32 e sample rate.
-
-    Ogni frame passa da un resampler verso float planare, così il
-    formato interno del codec (s16, flt, fltp...) non conta; il sample
-    rate resta quello del file: il resampling è compito di resample().
-    """
-    import av
-
-    try:
-        with av.open(str(path)) as container:
-            if not container.streams.audio:
-                raise UnsupportedFormatError(f"{path.name} non contiene audio.")
-            stream = container.streams.audio[0]
-            chunks: list[np.ndarray] = []
-            resampler = None
-            samplerate = 0
-            for frame in container.decode(stream):
-                if resampler is None:
-                    samplerate = frame.sample_rate
-                    resampler = av.AudioResampler(
-                        format="fltp", layout=frame.layout, rate=samplerate
-                    )
-                chunks += [f.to_ndarray() for f in resampler.resample(frame)]
-            if resampler is not None:
-                chunks += [f.to_ndarray() for f in resampler.resample(None)]
-    except av.error.FFmpegError as exc:
-        raise UnsupportedFormatError(
-            f"File audio non leggibile: {path.name}. Dettaglio: {exc}"
-        ) from exc
-    if not chunks:
-        raise UnsupportedFormatError(f"File audio vuoto: {path.name}")
-    data = np.concatenate(chunks, axis=1).astype(np.float32, copy=False)
-    return np.ascontiguousarray(data.T), samplerate
+    @property
+    def downmixed(self) -> bool:
+        return self.source_channels > 2
 
 
-def probe_duration(path: Path) -> float | None:
-    """Durata in secondi senza decodificare, o None se il file non si legge."""
-    try:
-        info = sf.info(str(path))
-        return info.frames / info.samplerate
-    except Exception:  # non è un formato soundfile: si prova con FFmpeg
-        pass
-    try:
-        import av
+def _refuse_if_too_long(path: Path, seconds: float | None) -> None:
+    if seconds is not None and seconds > MAX_DURATION_S:
+        raise TooLongError(
+            "err.too_long", f"{seconds:.1f} s", name=path.name, minutes=math.ceil(seconds / 60)
+        )
 
-        with av.open(str(path)) as container:
-            if container.duration is not None:
-                return container.duration / av.time_base
-            stream = container.streams.audio[0]
-            if stream.duration is not None and stream.time_base is not None:
-                return float(stream.duration * stream.time_base)
-    except Exception:  # file corrotto o non audio: la stima ricade sul default
-        return None
-    return None
+
+def _refuse_non_finite(data: np.ndarray, path: Path) -> None:
+    # Una somma in float64 non va mai in overflow su campioni float32 di
+    # un brano, e NaN/Inf la contaminano: stessa risposta di
+    # np.isfinite(data).all() senza un array booleano grande quanto il file.
+    if not math.isfinite(float(np.sum(data, dtype=np.float64))):
+        raise NonFiniteAudioError("err.non_finite", name=path.name)
+
+
+def _to_model_channels(data: np.ndarray, path: Path) -> np.ndarray:
+    """[frames, channels] del file -> [2, frames] per il modello."""
+    channels = data.shape[1]
+    if channels == 1:
+        return np.repeat(data.T, 2, axis=0)
+    if channels == 2:
+        return data.T
+    if channels > downmix.MAX_CHANNELS:
+        raise UnsupportedFormatError("err.channels", name=path.name, channels=channels)
+    return downmix.to_stereo(data.T)
 
 
 def load(path: Path) -> SourceAudio:
-    """Carica un file audio come [channels, samples] float32.
+    """Carica un file audio come [2, samples] float32 per il modello.
 
-    Mono viene duplicato su due canali per il modello (regola 3);
-    `original_channels` ricorda com'era per la riscrittura.
+    Mono viene duplicato su due canali (regola 3), il multicanale ridotto
+    a stereo (regola 7); `original_channels` dice come riscrivere gli stem.
     """
-    try:
-        data, samplerate = sf.read(path, dtype="float32", always_2d=True)
-    except (sf.LibsndfileError, RuntimeError):
-        data, samplerate = _decode_via_pyav(path)
-    frames = data.shape[0]
-    if frames == 0:
-        raise UnsupportedFormatError(f"File audio vuoto: {path.name}")
-    if frames / samplerate > MAX_DURATION_S:
-        raise TooLongError(
-            f"{path.name} dura più di 30 minuti: StemForge non lo elabora. "
-            "Taglia il file nella DAW e riprova."
-        )
-    channels = data.shape[1]
-    audio = data.T.copy()  # [C, S]
-    if channels == 1:
-        audio = np.repeat(audio, 2, axis=0)
-    elif channels > 2:
-        # I modelli sono stereo: downmix dei canali extra, dichiarato.
-        audio = np.stack([audio[0], audio[1]])
+    path = Path(path)
+    _refuse_if_too_long(path, decode.soundfile_duration(path))  # prima di leggere 30+ min
+    data, samplerate = decode.read(path)
+    frames, channels = data.shape
+    if frames == 0 or channels == 0:
+        raise UnsupportedFormatError("err.empty", name=path.name)
+    _refuse_if_too_long(path, frames / samplerate)
+    _refuse_non_finite(data, path)
+    audio = _to_model_channels(data, path)
     return SourceAudio(
         data=np.ascontiguousarray(audio, dtype=np.float32),
         samplerate=samplerate,
-        original_channels=min(channels, 2),
+        original_channels=1 if channels == 1 else 2,
         original_frames=frames,
+        source_channels=channels,
     )
 
 

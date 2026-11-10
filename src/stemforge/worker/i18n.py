@@ -38,6 +38,10 @@ _IT: dict[str, str] = {
         "disponibile. Converti il file in WAV, FLAC o MP3, oppure reinstalla StemForge."
     ),
     "err.empty": "{name} non contiene audio: scegli un altro file.",
+    "err.channels": (
+        "{name} ha {channels} canali: StemForge ne gestisce fino a 8. "
+        "Esportalo in stereo o in 5.1 e riprova."
+    ),
     "err.too_long": (
         "{name} dura {minutes} minuti: StemForge separa brani fino a 30 minuti. "
         "Taglialo nella DAW e riprova."
@@ -131,6 +135,10 @@ _EN: dict[str, str] = {
         "Convert the file to WAV, FLAC or MP3, or reinstall StemForge."
     ),
     "err.empty": "{name} contains no audio: choose another file.",
+    "err.channels": (
+        "{name} has {channels} channels: StemForge handles up to 8. "
+        "Export it as stereo or 5.1 and try again."
+    ),
     "err.too_long": (
         "{name} is {minutes} minutes long: StemForge separates songs up to 30 "
         "minutes. Trim it in your DAW and try again."
