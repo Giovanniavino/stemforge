@@ -66,7 +66,8 @@ endif
 SDIST_ONLY := antlr4-python3-runtime,demucs,dora-search
 DIST := packaging/dist
 WORK := packaging/build
-VERSION := $(shell sed -n 's/^__version__ = "\(.*\)"/\1/p' src/stemforge/__init__.py)
+# ".*" finale: con un checkout CRLF (Windows) il \r non finisce nella versione
+VERSION := $(shell sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/stemforge/__init__.py)
 
 APP_EXE_legacy-intel := $(DIST)/StemForge.app/Contents/MacOS/StemForge
 APP_EXE_mac-arm64    := $(DIST)/StemForge.app/Contents/MacOS/StemForge
@@ -140,7 +141,8 @@ build-release:
 	$(MAKE) build REQUIRE_FFMPEG=1
 
 check-min-os:
-	"$(VPY)" packaging/macos/check_min_os.py $(DIST)/StemForge.app $(MACOS_MIN_$(PROFILE))
+	"$(VPY)" packaging/macos/check_min_os.py $(DIST)/StemForge.app $(MACOS_MIN_$(PROFILE)) \
+		--arch $(DMG_ARCH_$(PROFILE))
 
 selftest:
 	"$(VPY)" packaging/ci/run_selftest.py "$(APP_EXE)" $(WORK)/selftest.json $(SELFTEST_ARGS)
