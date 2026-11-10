@@ -1,5 +1,6 @@
 [build-system]
-requires = ["setuptools>=69"]
+# >=77: prima versione che accetta license come espressione SPDX (PEP 639)
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +8,8 @@ name = "stemforge"
 dynamic = ["version"]
 description = "Separazione stem standalone con consegna drag & drop alla DAW"
 requires-python = ">=3.11,<3.13"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 # Due pile di librerie, scelte per piattaforma (BUILD_SPEC §2):
 # - Mac Intel: ferma a torch 2.2.2, l'ultima con wheel macOS x86_64, e a
 #   PySide6 6.4.3, l'ultima Qt per macOS < 11. Non alzare mai questi pin.
