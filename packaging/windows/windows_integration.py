@@ -11,6 +11,7 @@ from __future__ import annotations
 import ctypes
 import math
 import os
+import shutil
 import struct
 import subprocess
 import tempfile
@@ -64,6 +65,20 @@ def _key_exists(key: str) -> bool:
         return True
     except FileNotFoundError:
         return False
+
+
+def find_iscc() -> Path | None:
+    """Il compilatore di Inno Setup 6: nel PATH, oppure dove lo mette il suo installer."""
+    found = shutil.which("ISCC")
+    if found:
+        return Path(found)
+    bases = (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"),
+             os.path.join(os.environ.get("LOCALAPPDATA", ""), "Programs"))
+    for base in filter(None, bases):
+        candidate = Path(base) / "Inno Setup 6" / "ISCC.exe"
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def installed_dir() -> Path | None:
