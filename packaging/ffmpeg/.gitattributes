@@ -1,0 +1,2 @@
+# gli script girano in bash anche se il checkout Windows converte in CRLF
+*.sh text eol=lf
