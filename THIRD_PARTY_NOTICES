@@ -18,14 +18,23 @@ How the licenses were verified (2026-11-10)
        2.10, PySide6 6.7.3) and "legacy" (Python 3.11, torch 2.2.2,
        PySide6 6.4.3). Where PyPI metadata was empty, the LICENSE file
        shipped in the wheel decided.
+  Some legacy-intel pins are not the versions installed in the legacy
+  environment (antlr4-python3-runtime 4.9.3, certifi 2026.7.22,
+  dora-search 0.1.12, filelock 3.32.2, fsspec 2026.7.0, lameenc 1.8.4,
+  markupsafe 3.0.3, omegaconf 2.3.1, pycparser 3.0, tqdm 4.70.0): for
+  those the PyPI JSON of that exact version, plus the license of the
+  neighbouring installed version of the same project, decided.
 - Libraries embedded inside wheels (libsndfile, OpenBLAS, Intel OpenMP,
   Qt's FFmpeg...): read from the Windows wheels installed in those two
-  environments (license notes in the wheel, DLL version resources,
-  strings). The macOS and Linux wheels of the same versions were NOT
-  opened from the Windows dev-box: entries marked "[to confirm on
-  mac/linux wheel]" must be re-checked when the Mac/Linux build runs.
-- The format of the entries below is checked by tests/unit/test_docs_*:
-  every pin of every lock must appear here with its version.
+  environments (COPYING/LICENSE/NOTICE files in the wheel, DLL version
+  resources, version strings inside the binaries). The macOS and Linux
+  wheels of the same versions were NOT opened from the Windows dev-box:
+  entries marked "[to confirm on mac/linux wheel]" must be re-checked
+  when the Mac/Linux build runs.
+- tests/unit/test_docs_notices.py checks this file against the lock
+  files: every pin of every distributed lock must appear in Part 2 with
+  its version attributed to the right profile, and no Part 2 entry may
+  describe something no lock distributes any more.
 
 Profiles (BUILD_SPEC.md §2): legacy-intel = requirements-macos-x86_64.lock,
 mac-arm64 = requirements-macos-arm64.lock, win-x64 =
@@ -370,14 +379,15 @@ PART 3 — NATIVE LIBRARIES, RUNTIMES AND TOOLS IN THE PACKAGE
   license  : LGPL-2.1-or-later
   copyright: Copyright (C) 1999-2025 Erik de Castro Lopo and the libsndfile contributors
   source   : https://github.com/libsndfile/libsndfile
-  codecs statically built into that library (from the wheel's licensing/license_notes.md
-  and the library's version strings):
+  license text: the wheel ships it as _soundfile_data/COPYING (LGPL-2.1)
+  codecs statically built into that library (from the version strings inside
+  libsndfile_x64.dll of the Windows wheel; libogg and libmpg123 print no version):
     libFLAC 1.4.3   BSD-3-Clause      Xiph.Org Foundation, Josh Coalson   https://github.com/xiph/flac
     libogg          BSD-3-Clause      Xiph.Org Foundation                 https://github.com/xiph/ogg
     libvorbis 1.3.7 BSD-3-Clause      Xiph.Org Foundation                 https://github.com/xiph/vorbis
     libopus 1.5.2   BSD-3-Clause      Xiph.Org, Skype, Octasic, et al.    https://github.com/xiph/opus
     libmpg123       LGPL-2.1          the mpg123 project                  https://www.mpg123.de/
-    libmp3lame      LGPL-2.0-or-later the LAME project                    https://lame.sourceforge.io/
+    LAME 3.100      LGPL-2.0-or-later the LAME project                    https://lame.sourceforge.io/
   [to confirm on mac/linux wheel: same library set expected, versions may differ]
 
 [Demucs pretrained weights — downloaded on first launch, not inside the package]
