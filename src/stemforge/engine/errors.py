@@ -44,3 +44,24 @@ class InsufficientDiskError(UserFacingError, RuntimeError):
     Il disco che si riempie DURANTE la scrittura arriva invece come
     OSError(ENOSPC) da export/folder.py, che non importa engine (§3).
     """
+
+
+# Come torch e numpy dicono "memoria finita": MemoryError da numpy, un
+# RuntimeError con un testo diverso per ogni allocatore (CPU Windows e
+# Linux, CUDA, MPS). Un elenco esplicito, perché l'alternativa sarebbe
+# trattare ogni RuntimeError come memoria esaurita.
+_MEMORY_MARKERS = (
+    "out of memory",
+    "not enough memory",
+    "can't allocate memory",
+    "cannot allocate memory",
+    "defaultcpuallocator",
+)
+
+
+def is_memory_error(exc: BaseException) -> bool:
+    """Memoria esaurita? È contingente: si riprova, non si incolpa il file."""
+    if isinstance(exc, MemoryError):
+        return True
+    text = str(exc).lower()
+    return isinstance(exc, RuntimeError) and any(m in text for m in _MEMORY_MARKERS)

@@ -1,8 +1,9 @@
-"""I/O audio del motore: caricamento, resampling, blocchi per file lunghi.
+"""I/O audio del motore: caricamento, resampling, lunghezze, canali.
 
 BUILD_SPEC §5.7. La SCRITTURA degli stem non sta qui ma in export/folder.py:
 il diagramma delle dipendenze (§3) vieta a export di importare engine, e i
-due mondi condividono solo numpy. La decodifica sta in decode.py.
+due mondi condividono solo numpy. La decodifica sta in decode.py, i
+blocchi per i file lunghi in blocks.py.
 
 - Decodifica sempre a float32 (regola 1), con TUTTI i canali del file.
 - Multicanale: downmix stereo ITU-R BS.775 (regola 7, engine/downmix.py),
@@ -11,9 +12,6 @@ due mondi condividono solo numpy. La decodifica sta in decode.py.
 - NaN/Inf: il file si rifiuta (regola 8), mai si passa al modello.
 - Il resampling usa torchaudio (sinc kaiser di qualità) ed è pigro:
   i test unitari girano senza torch.
-- File lunghi: blocchi con rampe lineari COMPLEMENTARI che sommano a 1
-  in ogni campione (regola 6): un crossfade equal-power romperebbe
-  l'invariante di ricostruzione.
 """
 
 from __future__ import annotations
@@ -25,6 +23,15 @@ from pathlib import Path
 import numpy as np
 
 from stemforge.engine import decode, downmix
+from stemforge.engine.blocks import (
+    BLOCK_LENGTH_S,
+    BLOCK_OVERLAP_S,
+    BLOCK_THRESHOLD_S,
+    Block,
+    block_length_s,
+    overlap_add,
+    split_blocks,
+)
 from stemforge.engine.decode import SUPPORTED_EXTENSIONS, probe_duration
 from stemforge.engine.errors import (
     NonFiniteAudioError,
@@ -33,20 +40,19 @@ from stemforge.engine.errors import (
 )
 
 __all__ = [
+    "BLOCK_LENGTH_S", "BLOCK_OVERLAP_S", "BLOCK_THRESHOLD_S", "Block",
     "SUPPORTED_EXTENSIONS", "NonFiniteAudioError", "TooLongError",
-    "UnsupportedFormatError", "probe_duration",
+    "UnsupportedFormatError", "block_length_s", "overlap_add", "probe_duration",
+    "split_blocks",
 ]
 
 MODEL_SAMPLERATE = 44100
 MAX_DURATION_S = 30 * 60  # limite duro (§5.7 regola 6)
-BLOCK_THRESHOLD_S = 15 * 60
-BLOCK_LENGTH_S = 300.0
-BLOCK_OVERLAP_S = 2.0
 
 
 @dataclass(frozen=True)
 class SourceAudio:
-    data: np.ndarray  # [channels, samples] float32, sempre stereo per il modello
+    data: np.ndarray  # [2, samples] float32: sempre stereo per il modello
     samplerate: int
     original_channels: int  # canali degli stem in uscita: 1 o 2 (regole 3 e 7)
     original_frames: int  # lunghezza esatta da restituire (regola 2)
@@ -95,10 +101,11 @@ def load(path: Path) -> SourceAudio:
     a stereo (regola 7); `original_channels` dice come riscrivere gli stem.
     """
     path = Path(path)
-    _refuse_if_too_long(path, decode.soundfile_duration(path))  # prima di leggere 30+ min
+    # dall'intestazione, PRIMA di decodificare 30+ minuti per niente
+    _refuse_if_too_long(path, decode.probe_duration(path))
     data, samplerate = decode.read(path)
     frames, channels = data.shape
-    if frames == 0 or channels == 0:
+    if frames == 0 or channels == 0 or samplerate <= 0:
         raise UnsupportedFormatError("err.empty", name=path.name)
     _refuse_if_too_long(path, frames / samplerate)
     _refuse_non_finite(data, path)
@@ -156,44 +163,3 @@ def to_original_channels(audio: np.ndarray, original_channels: int) -> np.ndarra
     if original_channels == 1:
         return audio.mean(axis=0, keepdims=True)
     return audio
-
-
-@dataclass(frozen=True)
-class Block:
-    start: int  # campioni, inclusivo
-    end: int  # campioni, esclusivo
-    fade_in: int  # campioni di rampa complementare all'inizio
-
-
-def split_blocks(total_frames: int, samplerate: int) -> tuple[Block, ...]:
-    """Blocchi per file oltre i 15 minuti (regola 6). Sotto soglia: uno."""
-    if total_frames / samplerate <= BLOCK_THRESHOLD_S:
-        return (Block(0, total_frames, 0),)
-    length = int(BLOCK_LENGTH_S * samplerate)
-    overlap = int(BLOCK_OVERLAP_S * samplerate)
-    blocks: list[Block] = []
-    start = 0
-    while start < total_frames:
-        end = min(start + length, total_frames)
-        blocks.append(Block(start, end, 0 if start == 0 else overlap))
-        if end == total_frames:
-            break
-        start = end - overlap
-    return tuple(blocks)
-
-
-def overlap_add(dest: np.ndarray, chunk: np.ndarray, block: Block) -> None:
-    """Accumula un blocco elaborato con rampe lineari complementari.
-
-    Nella zona di sovrapposizione dest contiene già la coda del blocco
-    precedente: qui si applica w crescente al nuovo e (1-w) al vecchio,
-    e w + (1-w) == 1 esattamente in ogni campione.
-    """
-    fade = block.fade_in
-    if fade > 0:
-        w = np.linspace(0.0, 1.0, fade, endpoint=False, dtype=np.float32)
-        dest[..., block.start : block.start + fade] *= 1.0 - w
-        dest[..., block.start : block.start + fade] += chunk[..., :fade] * w
-        dest[..., block.start + fade : block.end] = chunk[..., fade:]
-    else:
-        dest[..., block.start : block.end] = chunk

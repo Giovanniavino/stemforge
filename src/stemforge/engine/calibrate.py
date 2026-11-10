@@ -9,13 +9,17 @@ La stima in UI viene SOLO da questa tabella, mai da numeri nel codice.
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
+from typing import Callable
 
 import numpy as np
 
-from stemforge.engine import paths
+from stemforge.engine import device, paths
 from stemforge.engine.planner import DEFAULT_RATES
+
+log = logging.getLogger(__name__)
 
 # Peso del valore nuovo nella media mobile esponenziale: abbastanza da
 # inseguire una macchina che cambia (thermal throttling, altre app),
@@ -61,11 +65,12 @@ def record_measurement(rate_key: str, compute_s: float, audio_s: float) -> None:
     save_rates(rates)
 
 
-_MPS_CHECK_AUDIO_S = 6.0
-# Scarto massimo MPS/CPU sullo stesso audio. fp32 contro fp32 dà
-# tipicamente -80 dB o meglio; -40 dB (1% d'ampiezza) è largo per gli
-# arrotondamenti ma cattura qualsiasi operazione implementata male.
-_MPS_MAX_ERROR_DB = -40.0
+_ACCEL_CHECK_AUDIO_S = 6.0
+# Scarto massimo acceleratore/CPU sullo stesso audio (D8). fp32 contro
+# fp32 dà tipicamente -80 dB o meglio; -40 dB (1% d'ampiezza) è largo per
+# gli arrotondamenti (anche per l'fp16 di CUDA nei preset veloci) ma
+# cattura qualsiasi operazione implementata male.
+_ACCEL_MAX_ERROR_DB = -40.0
 
 
 def _synthetic(seconds: float, samplerate: int, seed: int = 0) -> np.ndarray:
@@ -95,36 +100,51 @@ def _vocals_probe(device: str, audio: np.ndarray, backend=None) -> np.ndarray:
     return out[StemKind.VOCALS].numpy()
 
 
-def validate_mps() -> bool:
-    """Confronta MPS con CPU sullo stesso audio e salva il verdetto.
+def _error_db(candidate: np.ndarray, reference: np.ndarray) -> float:
+    if candidate.shape != reference.shape:
+        return 0.0  # forme diverse: tanto sbagliato quanto il segnale stesso
+    error = float(np.sqrt(np.mean((candidate - reference) ** 2)))
+    level = max(float(np.sqrt(np.mean(reference**2))), 1e-12)
+    return float(20.0 * np.log10(max(error, 1e-12) / level))
 
-    Su questo controllo poggia l'uso della GPU dei Mac Apple Silicon: i
-    runner di CI non hanno GPU, quindi la verifica la fa la macchina vera.
+
+def validate_accelerator(
+    accelerator: str, probe: Callable[[str, np.ndarray], np.ndarray] = _vocals_probe
+) -> bool:
+    """Confronta l'acceleratore con la CPU sullo stesso audio e salva il
+    verdetto (D8): vale per MPS e per CUDA, con la stessa soglia.
+
+    I runner di CI non hanno GPU: la verifica la fa la macchina vera.
     """
-    from stemforge.engine.device import save_mps_verdict
-
-    audio = _synthetic(_MPS_CHECK_AUDIO_S, 44100, seed=1)
+    audio = _synthetic(_ACCEL_CHECK_AUDIO_S, 44100, seed=1)
+    label = accelerator.upper()
     try:
-        reference = _vocals_probe("cpu", audio)
-        candidate = _vocals_probe("mps", audio)
-        error = float(np.sqrt(np.mean((candidate - reference) ** 2)))
-        level = max(float(np.sqrt(np.mean(reference**2))), 1e-12)
-        error_db = 20.0 * np.log10(max(error, 1e-12) / level)
-        ok = bool(error_db < _MPS_MAX_ERROR_DB)
-        detail = f"scarto MPS/CPU {error_db:.1f} dB (soglia {_MPS_MAX_ERROR_DB} dB)"
-    except Exception as exc:  # qualsiasi guasto MPS = verdetto negativo, mai crash
-        ok, detail = False, f"MPS non utilizzabile: {exc!r}"
-    save_mps_verdict(ok, detail)
+        error_db = _error_db(probe(accelerator, audio), probe("cpu", audio))
+        ok = bool(np.isfinite(error_db) and error_db < _ACCEL_MAX_ERROR_DB)
+        detail = f"scarto {label}/CPU {error_db:.1f} dB (soglia {_ACCEL_MAX_ERROR_DB} dB)"
+    except Exception as exc:  # qualsiasi guasto = verdetto negativo, mai crash
+        log.warning("%s non utilizzabile", label, exc_info=True)
+        ok, detail = False, f"{label} non utilizzabile: {exc!r}"
+    device.save_verdict(accelerator, ok, detail)
     return ok
 
 
-def resolve_job_device(requested: str) -> str:
-    """Device effettivo di un job; verifica MPS una volta sola se serve."""
-    from stemforge.engine import device
-
-    if requested == "auto" and device.mps_needs_validation():
-        validate_mps()
-    return device.resolve_device(requested)
+def resolve_job_device(
+    requested: str,
+    cuda_available: Callable[[], bool] | None = None,
+    mps_available: Callable[[], bool] | None = None,
+    probe: Callable[[str, np.ndarray], np.ndarray] = _vocals_probe,
+) -> str:
+    """Device effettivo di un job; ogni acceleratore si verifica una volta
+    sola per macchina, al primo "auto" che lo trova (D8)."""
+    probes = {
+        "cuda_available": cuda_available or device._cuda_available,
+        "mps_available": mps_available or device._mps_available,
+    }
+    if requested == "auto":
+        for accelerator in device.unverified_accelerators(**probes):
+            validate_accelerator(accelerator, probe)
+    return device.resolve_device(requested, **probes)
 
 
 def first_run_calibration(device: str) -> dict[str, float]:

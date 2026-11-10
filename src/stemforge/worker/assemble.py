@@ -21,6 +21,7 @@ from stemforge.export import folder
 from stemforge.model.job import JobResult, SeparationJob, StemFile
 from stemforge.model.stem import StemKind
 from stemforge.worker import protocol
+from stemforge.worker.i18n import t
 
 Emit = Callable[[protocol.Message], None]
 
@@ -148,13 +149,13 @@ def write_all(
     warnings: list[str],
     emit: Emit,
 ) -> JobResult:
-    emit(protocol.Phase(label="Scrittura stem", pass_index=len(plan_.passes) + 1,
+    emit(protocol.Phase(label=t("phase.writing"), pass_index=len(plan_.passes) + 1,
                         pass_count=len(plan_.passes) + 1))
     written = _write_files(job, write, source, out_dir, outputs, wet)
     dereverb_applied = wet is not None
     for w in written:
         if w.nearly_silent:
-            warnings.append(f"{w.path.name} è quasi silenzioso (picco {w.peak_dbfs:.0f} dBFS)")
+            warnings.append(t("warn.nearly_silent", file=w.path.name, peak=f"{w.peak_dbfs:.0f}"))
     folder.write_manifest(
         out_dir=out_dir,
         source_name=job.source.name,
