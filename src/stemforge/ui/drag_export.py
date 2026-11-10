@@ -3,16 +3,19 @@
 Un solo formato, `text/uri-list`, su ogni sistema. È una scelta, non una
 pigrizia (fonti in docs/daw/README.md):
 
-- **Windows**: Qt traduce gli URL locali in `CF_HDROP` (DROPFILES wide),
-  il formato che leggono Explorer, JUCE e quindi tutte le DAW. Se il
-  QMimeData ha *solo* `text/uri-list`, il drag di Qt rifiuta i formati
-  testo e `UniformResourceLocator(W)` (qwindowsdropdataobject.cpp): la DAW
-  vede un drop di file, non un link. Un formato in più toglierebbe quel
-  filtro, quindi non se ne aggiunge nessuno.
+- **Windows**: Qt (QWindowsMimeURI) traduce gli URL locali in `CF_HDROP`
+  (DROPFILES con fWide), l'unico formato che offre JUCE trascinando file
+  fuori e il primo che legge accettandoli. Se il QMimeData ha *solo*
+  `text/uri-list`, il drag di Qt rifiuta i formati testo e
+  `UniformResourceLocator(W)` (qwindowsdropdataobject.cpp): la DAW vede un
+  drop di file, non un link. Un formato MIME in più toglierebbe quel
+  filtro, quindi non se ne aggiunge nessuno (FileNameW non serve: JUCE e
+  le app che lo usano consegnano a tutte le DAW con il solo CF_HDROP).
 - **macOS**: con più URL Qt crea un NSDraggingItem per file
   (`public.file-url`), come fa il Finder: è ciò che legge Ableton.
-- **Linux**: `text/uri-list` è il formato che chiede REAPER (SWELL/GDK) e
-  che legge JUCE; lo scriviamo esplicito, terminato CRLF (RFC 2483).
+- **Linux**: `text/uri-list` è il formato XDND di freedesktop, quello che
+  leggono REAPER (SWELL) e JUCE; lo scriviamo esplicito, terminato CRLF
+  (RFC 2483) e codificato come lo codificano i file manager GTK.
 
 I percorsi arrivano assoluti e normalizzati, senza il prefisso `\\\\?\\`
 (le DAW non lo capiscono), e solo per file che esistono: la schermata
@@ -54,16 +57,21 @@ def mime_for_platform(files: list[str], platform: str) -> QMimeData:
     if platform == "win32":
         # in avanti: QUrl riconosce unità e UNC su qualunque host
         files = [name.replace("\\", "/") for name in files]
-    urls = [QUrl.fromLocalFile(name) for name in files]
-    mime.setUrls(urls)
+    mime.setUrls([QUrl.fromLocalFile(name) for name in files])
     if platform not in ("win32", "darwin"):
-        mime.setData(URI_LIST, uri_list_payload(urls))
+        mime.setData(URI_LIST, uri_list_payload(files))
     return mime
 
 
-def uri_list_payload(urls: list[QUrl]) -> bytes:
-    """RFC 2483: un URI codificato per riga, ogni riga chiusa da CRLF."""
-    return b"".join(bytes(url.toEncoded()) + b"\r\n" for url in urls)
+def uri_list_payload(files: list[str]) -> bytes:
+    """RFC 2483: un URI `file://` per riga, ogni riga chiusa da CRLF.
+
+    Si codifica tutto tranne gli unreserved e `/`, come g_filename_to_uri
+    di GLib: `QUrl.toEncoded` lascerebbe `[` e `]` nudi nel path, che
+    RFC 3986 non ammette e che un parser rigido rifiuterebbe."""
+    return b"".join(
+        b"file://" + bytes(QUrl.toPercentEncoding(name, b"/")) + b"\r\n"
+        for name in files)
 
 
 def drop_paths(paths: list[Path]) -> list[str]:
