@@ -34,7 +34,12 @@ file, il Finder e i file manager: le DAW lo leggono senza codice specifico.
   file, non un link né un testo: è la correzione di QTBUG-62662 (Outlook
   creava un collegamento invece di un allegato). **Per questo
   `drag_export` non aggiunge altri formati MIME**: il secondo formato
-  spegnerebbe quel filtro.
+  spegnerebbe quel filtro. Il filtro non tocca `EnumFormatEtc`: un
+  bersaglio che enumera vede ancora elencati gli URL, ma chiedendoli
+  riceve `DATA_E_FORMATETC` e ripiega su `CF_HDROP` (ricontrollato sul
+  sorgente v6.4.3: `QWindowsDropDataObject` ridefinisce solo `GetData` e
+  `QueryGetData`). Se una DAW si fermasse al primo formato enumerato
+  senza ripiegare, la checklist lo mostrerebbe come un drop rifiutato.
 - **Verificato eseguendo** sul dev-box Windows 11 con PySide6 6.7.3 e
   6.4.3 (`tests/integration/test_daw_clipboard.py`): il QMimeData di
   `build_mime_data` messo negli appunti (stesso convertitore, ma oggetto
