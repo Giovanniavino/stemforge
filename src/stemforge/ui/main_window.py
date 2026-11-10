@@ -2,17 +2,22 @@
 
 Coda dei file: più file trascinati si elaborano in sequenza con le
 stesse scelte; un file che fallisce non ferma gli altri (§10.1).
+Tastiera (§8.6): ogni cambio di schermata porta il focus sul controllo
+che serve dopo, e le scorciatoie di keyboard.py seguono la schermata.
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
 
 from stemforge.model.job import SeparationJob
+from stemforge.ui import a11y, keyboard
 from stemforge.ui.bridge import WorkerBridge
 from stemforge.ui.drop_zone import DropZone
 from stemforge.ui.progress_view import ProgressView
@@ -21,19 +26,24 @@ from stemforge.ui.stem_picker import StemPicker
 from stemforge.worker import planning
 
 log = logging.getLogger("stemforge")
+translate = QCoreApplication.translate
+
+_DEFAULT_SIZE = (760, 620)
 
 
 class MainWindow(QMainWindow):
     def __init__(self, out_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("StemForge")
-        self.resize(760, 620)
+        self.resize(*_DEFAULT_SIZE)
 
         self._queue: list[Path] = []
         self._current_job: SeparationJob | None = None
         self._failures: list[str] = []
         self._warnings: list[str] = []
         self._preparing = False
+        self._help_menu = None
+        self._diagnostics_action: QAction | None = None
 
         self._bridge = WorkerBridge(self)
         self._stack = QStackedWidget()
@@ -45,9 +55,17 @@ class MainWindow(QMainWindow):
         self._result = ResultView()
         for widget in (self._drop, self._picker, self._progress, self._result):
             self._stack.addWidget(widget)
+        self._wire()
+        self._shortcuts = keyboard.install(
+            self, self._on_open_shortcut, self._on_return, self._on_escape
+        )
+        if sys.platform == "darwin":
+            self.install_help_menu()
 
+    def _wire(self) -> None:
         self._drop.files_chosen.connect(self._on_files)
         self._picker.start_requested.connect(self._on_start)
+        self._picker.back_requested.connect(self._show_drop)
         self._progress.cancel_button.clicked.connect(self._bridge.cancel)
         self._result.back_requested.connect(self._show_drop)
 
@@ -57,6 +75,56 @@ class MainWindow(QMainWindow):
         self._bridge.done.connect(self._on_done)
         self._bridge.failed.connect(self._on_failed)
         self._bridge.cancelled.connect(self._on_cancelled)
+
+    # -- menu Aiuto (macOS, §9.9) -----------------------------------------
+
+    def install_help_menu(self) -> None:
+        """Su macOS l'utente cerca la diagnostica nel menu Aiuto; altrove
+        basta il pulsante della schermata iniziale."""
+        self._help_menu = self.menuBar().addMenu("")
+        self._diagnostics_action = QAction(self)
+        self._diagnostics_action.triggered.connect(
+            lambda: self._drop.footer.exporter.export(self)
+        )
+        self._help_menu.addAction(self._diagnostics_action)
+        self._retranslate_menu()
+
+    def _retranslate_menu(self) -> None:
+        if self._help_menu is None or self._diagnostics_action is None:
+            return
+        self._help_menu.setTitle(translate("MainWindow", "&Help"))
+        self._diagnostics_action.setText(translate("MainWindow", "Export Diagnostics…"))
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() == QEvent.Type.LanguageChange:
+            self._retranslate_menu()
+        super().changeEvent(event)
+
+    # -- tastiera (§8.6) --------------------------------------------------
+
+    def _on_open_shortcut(self) -> None:
+        if self._bridge.running or self._preparing:
+            return
+        self._drop.choose_files()
+
+    def _on_return(self) -> None:
+        if self._stack.currentWidget() is self._picker:
+            self._picker.request_start()
+        else:
+            keyboard.click_focused_button(self)
+
+    def _on_escape(self) -> None:
+        current = self._stack.currentWidget()
+        if current is self._picker:
+            self._show_drop()
+        elif current is self._progress and self._progress.cancel_button.isVisible():
+            self._bridge.cancel()
+        elif current is self._result:
+            self._show_drop()
+
+    def _show(self, screen: QWidget, focus: QWidget) -> None:
+        self._stack.setCurrentWidget(screen)
+        focus.setFocus()
 
     # -- prepare (primo avvio, §9.4) --------------------------------------
 
@@ -100,20 +168,23 @@ class MainWindow(QMainWindow):
     # -- routing ----------------------------------------------------------
 
     def _show_drop(self) -> None:
-        self._stack.setCurrentWidget(self._drop)
+        self._show(self._drop, self._drop.choose_button)
+
+    def _show_picker(self) -> None:
+        self._show(self._picker, self._picker.initial_focus())
 
     def _on_files(self, paths: list[Path]) -> None:
         self._queue = list(paths)
         self._failures = []
         first = self._queue.pop(0)
         self._picker.set_source(first, planning.probe_duration(first))
-        self._stack.setCurrentWidget(self._picker)
+        self._show_picker()
 
     def _on_start(self, job: SeparationJob) -> None:
         self._current_job = job
         self._warnings = []
         self._progress.reset()
-        self._stack.setCurrentWidget(self._progress)
+        self._show(self._progress, self._progress.cancel_button)
         log.info("job: %s -> %s", job.source.name, [k.value for k in job.wanted])
         self._bridge.start_job(job)
 
@@ -133,9 +204,11 @@ class MainWindow(QMainWindow):
         self._progress.stop()
         notes = list(self._warnings)
         if self._failures:
-            notes.append("Errori nel batch: " + "; ".join(self._failures))
+            notes.append(translate("MainWindow", "Errors in the batch: {errors}").format(
+                errors="; ".join(self._failures)
+            ))
         self._result.show_result(Path(out_dir), Path(manifest), notes)
-        self._stack.setCurrentWidget(self._result)
+        self._show(self._result, self._result.initial_focus())
         self._start_next_in_queue()
 
     def _on_failed(self, message: str, detail: str) -> None:
@@ -162,13 +235,14 @@ class MainWindow(QMainWindow):
             return
         # niente in coda: si torna alla scelta con le opzioni intatte (§10.1)
         self._picker.set_source_error(message)
-        self._stack.setCurrentWidget(self._picker)
+        self._show_picker()
 
     def _on_cancelled(self) -> None:
         # §8.3: si torna alla schermata 2 con le scelte intatte
         self._progress.stop()
         self._queue = []
-        self._stack.setCurrentWidget(self._picker)
+        self._show_picker()
+        a11y.announce(self._picker, translate("MainWindow", "Separation cancelled."))
 
     def _start_next_in_queue(self) -> None:
         if not self._queue or self._current_job is None:

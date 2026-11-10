@@ -10,11 +10,26 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QProcess, Signal
+from PySide6.QtCore import QCoreApplication, QObject, QProcess, QProcessEnvironment, Signal
 
 from stemforge.model.job import SeparationJob
+from stemforge.ui import i18n
 from stemforge.worker import protocol
 from stemforge.worker.launch import worker_command
+
+translate = QCoreApplication.translate
+
+
+def worker_environment(language: str) -> QProcessEnvironment:
+    """L'ambiente del figlio: quello del sistema più la lingua dell'UI.
+
+    STEMFORGE_LOCALE ("it"/"en") è il contratto con il worker, che la
+    usa per tradurre fasi, avvisi ed errori prima di mandarli: mai un
+    italiano a metà in un'interfaccia inglese (§8.6).
+    """
+    env = QProcessEnvironment.systemEnvironment()
+    env.insert(i18n.LOCALE_ENV, language)
+    return env
 
 
 class WorkerBridge(QObject):
@@ -57,6 +72,7 @@ class WorkerBridge(QObject):
         command = worker_command()
         process.setProgram(command[0])
         process.setArguments(command[1:] + extra_args)
+        process.setProcessEnvironment(worker_environment(i18n.active_language()))
         process.readyReadStandardOutput.connect(self._on_stdout)
         process.readyReadStandardError.connect(self._on_stderr)
         process.finished.connect(self._on_finished)
@@ -134,8 +150,11 @@ class WorkerBridge(QObject):
             if self._stderr_tail.strip():
                 detail += "\n--- stderr del worker ---\n" + self._stderr_tail
             self.failed.emit(
-                "Il processo di separazione si è interrotto. "
-                "Riprova; se succede ancora, guarda il log.",
+                translate(
+                    "WorkerBridge",
+                    "The separation process stopped unexpectedly. "
+                    "Try again; if it happens again, look at the log.",
+                ),
                 detail,
             )
 

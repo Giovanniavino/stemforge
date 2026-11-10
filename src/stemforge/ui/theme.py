@@ -2,14 +2,20 @@
 
 Due temi, chiaro e scuro, scelti dal sistema (§8.6). Ogni coppia testo/
 sfondo usata nel foglio di stile rispetta WCAG AA (4.5:1 per il testo,
-3:1 per il focus e gli indicatori): lo verifica tests/integration/
-test_ui_access.py calcolando i rapporti su questi valori.
+3:1 per bordi, focus e indicatori): lo verifica tests/integration/
+test_ui_access.py calcolando i rapporti su questi valori, con l'elenco
+delle coppie in CONTRAST_PAIRS qui sotto.
+
+Lo stato non si affida mai al solo colore (§8.6): il focus ispessisce il
+bordo, la riga selezionata ha una barra laterale, il drag attivo passa
+da tratteggio a linea piena.
 """
 
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from string import Template
 
 from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QColor, QPalette
@@ -22,17 +28,17 @@ class Palette:
     background: str
     surface: str
     surface_hover: str
-    border: str
+    border: str  # contorno dei controlli: >= 3:1 sullo sfondo
     accent: str  # arancio "forgia": sfondo del pulsante principale
     accent_hover: str
     accent_text: str  # accento usato come colore di testo (la stima)
-    on_accent: str  # testo sopra l'accento
+    on_accent: str  # testo e anello di focus sopra l'accento
     selection: str  # riga selezionata, con `text` sopra
     text: str
     text_dim: str
     danger: str
     focus: str  # anello di focus: sempre visibile (§8.6)
-    indicator: str  # bordo delle caselle di spunta
+    indicator: str  # bordo della drop zone e della barra
 
 
 DARK = Palette(
@@ -40,7 +46,7 @@ DARK = Palette(
     background="#1b1d22",
     surface="#24272e",
     surface_hover="#2b2f38",
-    border="#3a3f4b",
+    border="#737987",
     accent="#e8853b",
     accent_hover="#f09550",
     accent_text="#e8853b",
@@ -58,7 +64,7 @@ LIGHT = Palette(
     background="#f4f3f0",
     surface="#ffffff",
     surface_hover="#ebe8e3",
-    border="#bdb8ae",
+    border="#857f75",
     accent="#a94e0b",
     accent_hover="#8f4209",
     accent_text="#a14a0a",
@@ -69,6 +75,36 @@ LIGHT = Palette(
     danger="#b3261e",
     focus="#9a4609",
     indicator="#77736b",
+)
+
+# (primo piano, sfondo, rapporto minimo): le coppie che il foglio di stile
+# usa davvero. 4.5 = testo normale (AA 1.4.3), 3.0 = componenti e focus
+# (AA 1.4.11). Chi aggiunge una regola di colore aggiunge qui la coppia.
+TEXT_AA = 4.5
+NON_TEXT_AA = 3.0
+CONTRAST_PAIRS: tuple[tuple[str, str, float], ...] = (
+    ("text", "background", TEXT_AA),
+    ("text", "surface", TEXT_AA),
+    ("text", "surface_hover", TEXT_AA),
+    ("text", "selection", TEXT_AA),
+    ("text_dim", "background", TEXT_AA),
+    ("text_dim", "surface", TEXT_AA),
+    ("text_dim", "surface_hover", TEXT_AA),
+    ("accent_text", "background", TEXT_AA),
+    ("on_accent", "accent", TEXT_AA),
+    ("on_accent", "accent_hover", TEXT_AA),
+    ("danger", "background", TEXT_AA),
+    ("danger", "surface", TEXT_AA),
+    ("danger", "surface_hover", TEXT_AA),
+    ("border", "background", NON_TEXT_AA),
+    ("border", "surface", NON_TEXT_AA),
+    ("focus", "background", NON_TEXT_AA),
+    ("focus", "surface", NON_TEXT_AA),
+    ("focus", "selection", NON_TEXT_AA),
+    ("accent", "background", NON_TEXT_AA),
+    ("accent", "surface", NON_TEXT_AA),
+    ("indicator", "background", NON_TEXT_AA),
+    ("indicator", "surface", NON_TEXT_AA),
 )
 
 FONT_FAMILY = "Helvetica Neue, Segoe UI, sans-serif"
@@ -82,88 +118,102 @@ _WIN_PERSONALIZE = (
     "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
 )
 
+# il focus passa da 2 a 3 px di bordo (forma, non solo colore) e il
+# padding cala di 1 px per non far saltare il layout
+_STYLESHEET = Template("""
+QWidget {
+    background-color: $background;
+    color: $text;
+    font-family: $font_family;
+    font-size: ${base_pt}pt;
+}
+QPushButton {
+    background-color: $surface;
+    border: 2px solid $border;
+    border-radius: 6px;
+    padding: 7px 15px;
+}
+QPushButton:hover { background-color: $surface_hover; }
+QPushButton:focus { border: 3px solid $focus; padding: 6px 14px; }
+QPushButton#primary {
+    background-color: $accent;
+    color: $on_accent;
+    font-weight: bold;
+    border-color: $accent;
+}
+QPushButton#primary:hover { background-color: $accent_hover; }
+QPushButton#primary:focus { border: 3px solid $on_accent; padding: 6px 14px; }
+QPushButton#primary:disabled {
+    background-color: $surface;
+    color: $text_dim;
+    border-color: $border;
+}
+QPushButton#danger { color: $danger; }
+QPushButton#quiet { border-color: transparent; color: $text_dim; padding: 4px 8px; }
+QPushButton#quiet:focus { border: 3px solid $focus; padding: 3px 7px; }
+QCheckBox { spacing: 8px; border: 2px solid transparent; border-radius: 4px; padding: 2px 4px; }
+QCheckBox:focus { border-color: $focus; }
+QCheckBox#option { font-style: italic; }
+QCheckBox::indicator { width: 18px; height: 18px; }
+QComboBox {
+    background-color: $surface;
+    border: 2px solid $border;
+    border-radius: 6px;
+    padding: 3px 9px;
+}
+QComboBox:focus { border: 3px solid $focus; padding: 2px 8px; }
+QComboBox QAbstractItemView {
+    background-color: $surface;
+    selection-background-color: $selection;
+    selection-color: $text;
+}
+QProgressBar {
+    background-color: $surface;
+    border: 1px solid $indicator;
+    border-radius: 6px;
+    text-align: center;
+    min-height: 22px;
+}
+QProgressBar::chunk { background-color: $accent; border-radius: 5px; }
+QListWidget {
+    background-color: $surface;
+    border: 2px solid $border;
+    border-radius: 6px;
+}
+QListWidget:focus { border: 3px solid $focus; }
+QListWidget::item { padding: 10px; border-left: 5px solid transparent; }
+QListWidget::item:selected {
+    background-color: $selection;
+    color: $text;
+    border-left: 5px solid $focus;
+}
+QLabel#title { font-size: ${title_pt}pt; font-weight: bold; }
+QLabel#dim { color: $text_dim; }
+QLabel#estimate { font-size: ${estimate_pt}pt; color: $accent_text; }
+QLabel#error { color: $danger; }
+QFrame#dropzone {
+    background-color: $surface;
+    border: 2px dashed $indicator;
+    border-radius: 12px;
+}
+QFrame#dropzone QLabel#error { background-color: $surface; }
+QFrame#dropzone[dragActive="true"] { border: 3px solid $focus; }
+QToolButton { border: 2px solid transparent; border-radius: 4px; font-weight: bold; padding: 2px; }
+QToolButton:focus { border-color: $focus; }
+""")
+
 
 def stylesheet(p: Palette, base_pt: float) -> str:
     """Le dimensioni partono dal font di sistema: chi ha ingrandito il
     testo del sistema lo trova ingrandito anche qui (§8.6)."""
-    title_pt = round(base_pt * TITLE_SCALE, 1)
-    estimate_pt = round(base_pt * ESTIMATE_SCALE, 1)
-    return f"""
-QWidget {{
-    background-color: {p.background};
-    color: {p.text};
-    font-family: {FONT_FAMILY};
-    font-size: {base_pt}pt;
-}}
-QPushButton {{
-    background-color: {p.surface};
-    border: 2px solid {p.border};
-    border-radius: 6px;
-    padding: 7px 15px;
-}}
-QPushButton:hover {{ background-color: {p.surface_hover}; }}
-QPushButton:focus {{ border-color: {p.focus}; }}
-QPushButton#primary {{
-    background-color: {p.accent};
-    color: {p.on_accent};
-    font-weight: bold;
-    border-color: {p.accent};
-}}
-QPushButton#primary:hover {{ background-color: {p.accent_hover}; }}
-QPushButton#primary:focus {{ border-color: {p.focus}; }}
-QPushButton#primary:disabled {{
-    background-color: {p.surface};
-    color: {p.text_dim};
-    border-color: {p.border};
-}}
-QPushButton#danger {{ color: {p.danger}; }}
-QPushButton#danger:focus {{ border-color: {p.focus}; }}
-QPushButton#quiet {{ border-color: transparent; color: {p.text_dim}; padding: 4px 8px; }}
-QPushButton#quiet:focus {{ border-color: {p.focus}; }}
-QCheckBox {{ spacing: 8px; border: 2px solid transparent; border-radius: 4px; padding: 2px 4px; }}
-QCheckBox:focus {{ border-color: {p.focus}; }}
-QCheckBox::indicator {{ width: 18px; height: 18px; }}
-QComboBox {{
-    background-color: {p.surface};
-    border: 2px solid {p.border};
-    border-radius: 6px;
-    padding: 3px 9px;
-}}
-QComboBox:focus {{ border-color: {p.focus}; }}
-QComboBox QAbstractItemView {{
-    background-color: {p.surface};
-    selection-background-color: {p.selection};
-    selection-color: {p.text};
-}}
-QProgressBar {{
-    background-color: {p.surface};
-    border: 1px solid {p.indicator};
-    border-radius: 6px;
-    text-align: center;
-    min-height: 22px;
-}}
-QProgressBar::chunk {{ background-color: {p.accent}; border-radius: 5px; }}
-QListWidget {{
-    background-color: {p.surface};
-    border: 2px solid {p.border};
-    border-radius: 6px;
-}}
-QListWidget:focus {{ border-color: {p.focus}; }}
-QListWidget::item {{ padding: 10px; }}
-QListWidget::item:selected {{ background-color: {p.selection}; color: {p.text}; }}
-QLabel#title {{ font-size: {title_pt}pt; font-weight: bold; }}
-QLabel#dim {{ color: {p.text_dim}; }}
-QLabel#estimate {{ font-size: {estimate_pt}pt; color: {p.accent_text}; }}
-QLabel#error {{ color: {p.danger}; }}
-QFrame#dropzone {{
-    background-color: {p.surface};
-    border: 2px dashed {p.indicator};
-    border-radius: 12px;
-}}
-QFrame#dropzone[dragActive="true"] {{ border: 3px solid {p.focus}; }}
-QToolButton {{ border: 2px solid transparent; border-radius: 4px; font-weight: bold; padding: 2px; }}
-QToolButton:focus {{ border-color: {p.focus}; }}
-"""
+    values = asdict(p)
+    values.update(
+        font_family=FONT_FAMILY,
+        base_pt=round(base_pt, 1),
+        title_pt=round(base_pt * TITLE_SCALE, 1),
+        estimate_pt=round(base_pt * ESTIMATE_SCALE, 1),
+    )
+    return _STYLESHEET.substitute(values)
 
 
 def qt_palette(p: Palette) -> QPalette:
@@ -184,12 +234,17 @@ def qt_palette(p: Palette) -> QPalette:
     return palette
 
 
+def palette_is_dark(palette: QPalette) -> bool:
+    return palette.color(QPalette.ColorRole.Window).lightness() < _DARK_LIGHTNESS
+
+
 def system_prefers_dark(app: QApplication) -> bool:
     """Tema del sistema, con un rilevamento che funziona anche su Qt 6.4.
 
     QStyleHints.colorScheme esiste da Qt 6.5: sul profilo legacy-intel
     (PySide6 6.4) si ripiega sul registro di Windows e poi sulla
-    luminosità della palette di sistema, che su macOS segue l'aspetto.
+    luminosità della palette di sistema, che su macOS e sui desktop
+    Linux segue l'aspetto scelto dall'utente.
     """
     scheme_getter = getattr(app.styleHints(), "colorScheme", None)
     if scheme_getter is not None:
@@ -199,6 +254,8 @@ def system_prefers_dark(app: QApplication) -> bool:
         if scheme == Qt.ColorScheme.Light:
             return False
     if sys.platform == "win32":
+        # Qt 6.4 su Windows non scurisce la palette dei widget: la
+        # palette direbbe sempre "chiaro", il registro no
         light = QSettings(_WIN_PERSONALIZE, QSettings.Format.NativeFormat).value(
             "AppsUseLightTheme"
         )
@@ -207,8 +264,7 @@ def system_prefers_dark(app: QApplication) -> bool:
     cached = app.property(_SYSTEM_DARK_PROPERTY)
     if isinstance(cached, bool):
         return cached
-    window = app.palette().color(QPalette.ColorRole.Window)
-    return window.lightness() < _DARK_LIGHTNESS
+    return palette_is_dark(app.palette())
 
 
 def base_point_size(app: QApplication) -> float:
@@ -219,16 +275,21 @@ def base_point_size(app: QApplication) -> float:
     return max(size, MIN_BODY_PT)
 
 
-def apply_theme(app: QApplication, palette: Palette | None = None) -> Palette:
+def apply_theme(
+    app: QApplication, palette: Palette | None = None, text_scale: float = 1.0
+) -> Palette:
     """Applica il tema del sistema (o quello dato) e, dove Qt lo sa
-    segnalare (>= 6.5), lo segue quando l'utente lo cambia."""
+    segnalare (>= 6.5), lo segue quando l'utente lo cambia.
+
+    `text_scale` ingrandisce solo il testo (i test di alta densità lo
+    usano per simulare il testo di sistema ingrandito fino al 200%).
+    """
     if not isinstance(app.property(_SYSTEM_DARK_PROPERTY), bool):
         # la palette di sistema va letta PRIMA di sovrascriverla con la nostra
-        window = app.palette().color(QPalette.ColorRole.Window)
-        app.setProperty(_SYSTEM_DARK_PROPERTY, window.lightness() < _DARK_LIGHTNESS)
+        app.setProperty(_SYSTEM_DARK_PROPERTY, palette_is_dark(app.palette()))
     chosen = palette or (DARK if system_prefers_dark(app) else LIGHT)
     app.setPalette(qt_palette(chosen))
-    app.setStyleSheet(stylesheet(chosen, base_point_size(app)))
+    app.setStyleSheet(stylesheet(chosen, base_point_size(app) * text_scale))
     _watch_system_scheme(app)
     return chosen
 
