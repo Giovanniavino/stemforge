@@ -57,6 +57,13 @@ file, il Finder e i file manager: le DAW lo leggono senza codice specifico.
 - Qt non scrive il vecchio `NSFilenamesPboardType`; le app che lo leggono
   ancora dipendono dalla traduzione di AppKit. Non verificabile da
   Windows: è una riga della checklist (Logic, Cubase, Studio One).
+- Modificatori: AppKit, se l'utente tiene Cmd, Ctrl o Opzione, riduce la
+  maschera delle operazioni della sorgente (con Cmd resterebbe solo
+  "Generic", che con il nostro solo Copy darebbe una maschera vuota). Qt
+  risponde `YES` a `ignoreModifierKeysForDraggingSession:`
+  (`qnsview_dragging.mm`) e restituisce sempre la maschera delle azioni
+  del QDrag: un Cmd-drag, che Ableton usa per "un file per traccia",
+  resta un Copy. Letto nel sorgente, da provare (checklist C6).
 
 ### Linux (X11)
 
@@ -70,8 +77,10 @@ file, il Finder e i file manager: le DAW lo leggono senza codice specifico.
 - REAPER su Linux usa SWELL su GDK: al drop chiede l'atomo
   `text/uri-list`, tiene solo le righe che iniziano con `file://`,
   decodifica i `%XX` e consegna una `DROPFILES` all'app
-  (`swell-generic-gdk.cpp`, `urilistToDropFiles`). Il nostro payload è
-  esattamente quello.
+  (`swell-generic-gdk.cpp`, `urilistToDropFiles`). Il parser si ferma al
+  primo spazio bianco e non conosce un host dopo `file://`: per questo
+  gli spazi devono arrivare come `%20` e l'URI è `file:///percorso`,
+  senza `localhost`. Il nostro payload è esattamente quello.
 - Wayland: Qt offre gli stessi tipi MIME via `wl_data_source`; il ponte
   verso app XWayland lo fa il compositor. Da provare (checklist).
 
@@ -79,7 +88,7 @@ file, il Finder e i file manager: le DAW lo leggono senza codice specifico.
 
 | DAW | Sistemi | Cosa legge al drop di file | Fonte / confidenza |
 |---|---|---|---|
-| Ableton Live | mac, win | file da Explorer/Finder ("Files can also be dropped directly into Live") | manuale ufficiale; formato nativo standard |
+| Ableton Live | mac, win | file da Explorer/Finder ("Files can also be dropped directly into Live"); drop sotto le tracce = traccia nuova. Più file: il manuale 12 non dice nulla; secondo il forum senza modificatori vanno in sequenza su una traccia, con Ctrl/Cmd una traccia per file | manuale ufficiale (cap. 4.10); il modificatore solo da forum (2007–2009), da verificare (checklist C2) |
 | Logic Pro | mac | file URL dal Finder; più file → dialogo "Add Selected Files to Tracks" | Apple, guida di Logic; il nome del dialogo da manuali vecchi e forum |
 | FL Studio | mac, win | file da Explorer/Finder su Playlist, Channel rack, Browser | Image-Line KB 571 (non in Fruity Edition sulla Playlist) |
 | REAPER | mac, win, linux | `CF_HDROP` su Windows; `text/uri-list` su Linux (SWELL, sorgente letto); più file → domanda "una traccia per file?" | sorgente WDL/SWELL, reaper.blog, CockosWiki |
@@ -122,6 +131,7 @@ Qt (sorgente, tag v6.4.3 e v6.7.3):
 - https://github.com/qt/qtbase/blob/v6.4.3/src/plugins/platforms/windows/qwindowsdropdataobject.cpp
 - https://github.com/qt/qtbase/blob/v6.7.3/src/plugins/platforms/windows/qwindowsdropdataobject.cpp
 - https://github.com/qt/qtbase/blob/v6.4.3/src/plugins/platforms/cocoa/qcocoadrag.mm
+- https://github.com/qt/qtbase/blob/v6.4.3/src/plugins/platforms/cocoa/qnsview_dragging.mm
 - https://github.com/qt/qtbase/blob/v6.4.3/src/gui/platform/darwin/qmacmime.mm
 - https://github.com/qt/qtbase/blob/v6.4.3/src/plugins/platforms/xcb/qxcbmime.cpp
 - https://github.com/qt/qtbase/blob/v6.4.3/src/corelib/kernel/qmimedata.cpp
