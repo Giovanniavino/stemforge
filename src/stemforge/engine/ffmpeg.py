@@ -21,6 +21,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from typing import IO
 
 import numpy as np
 
@@ -131,7 +132,7 @@ def _file_arg(path: Path) -> str:
     return "file:" + str(Path(path).resolve())
 
 
-def _drain(stream, sink: bytearray) -> None:
+def _drain(stream: IO[bytes], sink: bytearray) -> None:
     for chunk in iter(lambda: stream.read(_READ_CHUNK), b""):
         sink += chunk
 
@@ -162,7 +163,9 @@ def _run(
         if stdin is not None:
             _feed(proc, stdin)
         code = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
+    except BaseException:
+        # timeout, annulla (KeyboardInterrupt) o altro: senza kill i thread
+        # di lettura aspetterebbero per sempre un ffmpeg ancora vivo
         proc.kill()
         proc.wait()
         raise
@@ -246,8 +249,11 @@ def decode(path: Path) -> tuple[np.ndarray, int]:
     da una pipe in f32le grezzo, con canali e sample rate fissati a quelli
     letti prima, così la forma dell'array non dipende da cosa c'è nel flusso.
     """
+    _require()  # un'app senza decoder è un guasto dell'app, non del file
+    if not Path(path).is_file():
+        raise DecodeError(f"{Path(path).name} non esiste o non è un file.")
     channels, samplerate = _stream_format(path)
-    args = ["-i", _file_arg(path), "-map", "0:a:0", "-vn", "-sn", "-dn",
+    args =["-i", _file_arg(path), "-map", "0:a:0", "-vn", "-sn", "-dn",
             "-ac", str(channels), "-ar", str(samplerate),
             "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"]
     try:
@@ -284,6 +290,22 @@ def probe_duration(path: Path) -> float | None:
     return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
 
 
+_WAVE_FORMAT_IEEE_FLOAT = 3
+_FLOAT_BYTES = 4
+
+
+def _float_wav(interleaved: np.ndarray, samplerate: int) -> bytes:
+    """WAV IEEE float da [frames, channels] float32 little-endian."""
+    channels = interleaved.shape[1]
+    data = interleaved.tobytes()
+    block = channels * _FLOAT_BYTES
+    fmt = struct.pack("<HHIIHH", _WAVE_FORMAT_IEEE_FLOAT, channels, samplerate,
+                      samplerate * block, block, 8 * _FLOAT_BYTES)
+    body = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+    body += b"data" + struct.pack("<I", len(data)) + data
+    return b"RIFF" + struct.pack("<I", len(body)) + body
+
+
 def encode_fixture(audio: np.ndarray, samplerate: int, dest: Path, codec: str) -> Path:
     """Scrive [channels, frames] float32 con un codec dei test (aac, alac...).
 
@@ -295,10 +317,11 @@ def encode_fixture(audio: np.ndarray, samplerate: int, dest: Path, codec: str) -
         raise ValueError(f"codec {codec!r} non tra {sorted(FIXTURE_CODECS)}")
     if audio.ndim != 2 or audio.shape[0] == 0 or audio.shape[1] == 0:
         raise ValueError(f"atteso [channels, frames], ricevuto {audio.shape}")
-    interleaved = np.ascontiguousarray(audio.T, dtype="<f4").tobytes()
-    args = ["-f", "f32le", "-ar", str(samplerate), "-ac", str(audio.shape[0]),
-            "-i", "pipe:0", "-c:a", codec, "-y", _file_arg(dest)]
-    code, _, err = _run(args, ENCODE_TIMEOUT_S, stdin=interleaved, quiet=True)
+    # in ingresso un WAV float completo invece di f32le grezzo: il demuxer
+    # wav c'è già nella build minima, quello f32le no (D9, solo il necessario)
+    wav = _float_wav(np.ascontiguousarray(audio.T, dtype="<f4"), samplerate)
+    args = ["-f", "wav", "-i", "pipe:0", "-c:a", codec, "-y", _file_arg(dest)]
+    code, _, err = _run(args, ENCODE_TIMEOUT_S, stdin=wav, quiet=True)
     if code != 0:
         raise RuntimeError(f"ffmpeg non ha scritto {Path(dest).name}: {_tail(err)}")
     return Path(dest)
