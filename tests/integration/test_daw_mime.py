@@ -90,6 +90,14 @@ def test_linux_has_explicit_crlf_uri_list(platform: str):
     assert [url.toLocalFile() for url in mime.urls()] == POSIX_FILES
 
 
+def test_linux_uri_list_keeps_non_utf8_bytes():
+    # su Linux un nome non UTF-8 arriva a Python con surrogateescape: nel
+    # payload deve tornare il byte originale, non un "?" (che è un altro file)
+    latin1_name = b"/home/ana/Brano \xe9.wav".decode("utf-8", "surrogateescape")
+    mime = mime_for_platform([latin1_name], "linux")
+    assert bytes(mime.data(URI_LIST)) == b"file:///home/ana/Brano%20%E9.wav\r\n"
+
+
 def test_no_files_no_urls():
     for platform in ("win32", "darwin", "linux"):
         mime = mime_for_platform([], platform)

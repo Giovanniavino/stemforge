@@ -29,6 +29,7 @@ import ntpath
 import os
 import posixpath
 import sys
+import urllib.parse
 from pathlib import Path
 
 from PySide6.QtCore import QMimeData, QUrl
@@ -68,10 +69,15 @@ def uri_list_payload(files: list[str]) -> bytes:
 
     Si codifica tutto tranne gli unreserved e `/`, come g_filename_to_uri
     di GLib: `QUrl.toEncoded` lascerebbe `[` e `]` nudi nel path, che
-    RFC 3986 non ammette e che un parser rigido rifiuterebbe."""
-    return b"".join(
-        b"file://" + bytes(QUrl.toPercentEncoding(name, b"/")) + b"\r\n"
-        for name in files)
+    RFC 3986 non ammette e che un parser rigido rifiuterebbe. Si parte dai
+    byte del nome su disco (surrogateescape, come li decodifica Python su
+    Linux): un nome non UTF-8 passato da QString diventerebbe `?`, cioè un
+    altro file."""
+    lines = []
+    for name in files:
+        raw = name.encode("utf-8", "surrogateescape")
+        lines.append(f"file://{urllib.parse.quote(raw, safe='/')}\r\n")
+    return "".join(lines).encode("ascii")
 
 
 def drop_paths(paths: list[Path]) -> list[str]:
