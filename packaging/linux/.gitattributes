@@ -1,0 +1,4 @@
+# Tutto qui dentro gira o viene letto su Linux (bash, AppImage, desktop
+# entry): niente CRLF anche se il checkout Windows li convertirebbe.
+* text=auto eol=lf
+*.png binary

@@ -75,12 +75,27 @@ def _get(url: str, token: str | None, accept: str = _ACCEPT):
     return urllib.request.urlopen(request, timeout=_TIMEOUT_S)
 
 
+def _fetch_manifest(base: str, ref: str, token: str | None) -> tuple[dict, str]:
+    """Un manifest; se chiesto per digest, verificato byte per byte.
+
+    I layer si verificano contro il manifest: senza questo controllo un
+    digest fissato in CI proteggerebbe solo i layer di un manifest falso.
+    """
+    with _get(base + ref, token) as response:
+        raw = response.read()
+        digest = response.headers.get("Docker-Content-Digest", ref)
+    if ref.startswith("sha256:"):
+        actual = "sha256:" + hashlib.sha256(raw).hexdigest()
+        if actual != ref:
+            raise SystemExit(f"manifest corrotto: chiesto {ref}, ricevuto {actual}")
+        digest = ref
+    return json.loads(raw), digest
+
+
 def _manifest(registry: str, repo: str, ref: str, token: str | None) -> tuple[dict, str]:
     """Manifest della piattaforma linux/amd64 e il suo digest."""
     base = f"https://{_api(registry)}/v2/{repo}/manifests/"
-    with _get(base + ref, token) as response:
-        digest = response.headers.get("Docker-Content-Digest", ref)
-        data = json.load(response)
+    data, digest = _fetch_manifest(base, ref, token)
     if "manifests" in data:
         wanted = [
             m for m in data["manifests"]
@@ -89,9 +104,7 @@ def _manifest(registry: str, repo: str, ref: str, token: str | None) -> tuple[di
         ]
         if not wanted:
             raise SystemExit(f"nessuna variante linux/{_ARCH} per {repo}:{ref}")
-        digest = wanted[0]["digest"]
-        with _get(base + digest, token) as response:
-            data = json.load(response)
+        data, digest = _fetch_manifest(base, wanted[0]["digest"], token)
     return data, digest
 
 
@@ -174,7 +187,8 @@ def pull(image: str, rootfs: Path) -> None:
             _extract_layer(blob, rootfs)
             _make_writable(rootfs)
             blob.unlink()
-    (rootfs / ".image-digest").write_text(f"{image}@{digest}\n", encoding="utf-8")
+    # immagine come chiesta + digest del manifest linux/amd64 usato davvero
+    (rootfs / ".image-digest").write_text(f"{image} {digest}\n", encoding="utf-8")
     print(f"{image} -> {rootfs} ({digest})")
 
 
