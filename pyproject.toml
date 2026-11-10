@@ -11,9 +11,12 @@ license = { text = "MIT" }
 # Due pile di librerie, scelte per piattaforma (BUILD_SPEC §2):
 # - Mac Intel: ferma a torch 2.2.2, l'ultima con wheel macOS x86_64, e a
 #   PySide6 6.4.3, l'ultima Qt per macOS < 11. Non alzare mai questi pin.
-# - Mac Apple Silicon e Windows: torch 2.10, l'ultima serie che gira su
-#   OGNI Mac Apple Silicon (macOS 11+); dalla 2.12 serve macOS 14.
-#   Windows usa la stessa pila: i test del dev-box valgono anche per arm64.
+# - Mac Apple Silicon, Windows e Linux: torch 2.10, l'ultima serie che gira
+#   su OGNI Mac Apple Silicon (macOS 11+); dalla 2.12 serve macOS 14.
+#   Windows e Linux usano la stessa pila: i test del dev-box valgono
+#   anche per arm64. Su Linux torch viene dall'indice CPU (tool.uv.sources).
+# FFmpeg NON e' una dipendenza Python: PyAV porta un FFmpeg GPLv3, al suo
+# posto un FFmpeg LGPL compilato in CI (BUILD_SPEC D9).
 dependencies = [
     "torch==2.2.2; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "torch==2.10.0; sys_platform != 'darwin' or platform_machine != 'x86_64'",
@@ -25,10 +28,6 @@ dependencies = [
     # x86_64/cp311), che sul Mac forza una build con Rust+CMake (campo, 11-08-2026)
     "demucs==4.0.1",
     "soundfile>=0.12",
-    # m4a/aac e ogni formato che soundfile non legge: FFmpeg dentro il
-    # pacchetto, nessun programma esterno. 13.1 = l'ultima con wheel per
-    # macOS Intel 10.13+ E Apple Silicon 11+.
-    "av==13.1.0",
     # nel bundle PyInstaller mancano i certificati CA di sistema
     "certifi>=2024.2",
 ]
@@ -48,6 +47,19 @@ version = { attr = "stemforge.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Solo per uv (packaging/gen_locks.py), pip lo ignora. Il torch Linux di
+# PyPI e' la build CUDA (~1 GB di librerie nvidia-*): la build CPU sta
+# nell'indice di PyTorch. "explicit": da quell'indice si prende SOLO cio'
+# che e' elencato qui, tutto il resto viene da PyPI.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
