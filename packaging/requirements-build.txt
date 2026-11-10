@@ -4,3 +4,6 @@ pyinstaller==6.22.3
 pyinstaller-hooks-contrib==2026.9
 pillow==13.0.0
 pytest==9.2.0
+# risolve e scrive i lock dei profili (packaging/gen_locks.py): fisso
+# perche' il formato del lock dipende dalla versione di uv
+uv==0.13.7
