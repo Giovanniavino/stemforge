@@ -32,16 +32,25 @@ _SOURCES = ["drums", "bass", "other", "vocals"]
 _SECONDS = 1.3  # più di un segmento: esercita lo split e l'overlap-add
 _SEGMENT_S = 1
 _SEED = 1234
-# il resampling sinc andata/ritorno 44.1k -> 48k -> 44.1k su un mix
-# limitato in banda deve restare molto sotto l'invariante di §10.2
-_RESAMPLE_MAX_DBFS = -40.0
+# Il sinc kaiser di §5.7 restituisce toni in banda a circa -115 dBFS
+# (misurato con torchaudio 2.2.2 e 2.10, 10-11-2026). -80 lascia margine
+# ma fallisce se il filtro degrada: con i parametri di default di
+# torchaudio (hann, larghezza 6) lo stesso giro dà -33 dBFS, con
+# larghezza 16 circa -67.
+_RESAMPLE_MAX_DBFS = -80.0
+_TONES_HZ = (220.0, 3300.0, 12000.0, 18000.0)
+_TONE_AMPLITUDE = 0.2
 
 
 def _tiny_htdemucs():
     from demucs.htdemucs import HTDemucs
 
+    # depth=3 e non 2: con un livello in meno la sequenza che entra nel
+    # cross-transformer e' 4 volte piu' lunga e l'attenzione (quadratica)
+    # porta il test da 0,5 a 3 s per passata. Il transformer resta: e'
+    # la parte con le API di torch piu' mobili.
     return HTDemucs(
-        _SOURCES, channels=8, depth=2, nfft=512, t_layers=1, t_heads=2,
+        _SOURCES, channels=8, depth=3, nfft=512, t_layers=1, t_heads=2,
         dconv_depth=1, segment=_SEGMENT_S,
     ).eval()
 
@@ -109,8 +118,19 @@ def test_cancel_between_segments(backend):
         backend.separate(_audio(), frozenset({K.VOCALS}), lambda p: None, should_cancel)
 
 
+def _band_limited_mix(samplerate: int) -> np.ndarray:
+    """Solo toni sotto il rolloff del filtro: il giro andata/ritorno deve
+    restituirli quasi identici. Rumore bianco e click di `synth_mix` hanno
+    energia oltre i 20,9 kHz che il filtro taglia per progetto, e
+    l'errore misurerebbe quel taglio invece del resampler."""
+    t = np.arange(int(_SECONDS * samplerate), dtype=np.float64) / samplerate
+    mono = sum(_TONE_AMPLITUDE * np.sin(2 * np.pi * f * t) for f in _TONES_HZ)
+    mono = mono.astype(np.float32)
+    return np.stack([mono, np.roll(mono, 7)])
+
+
 def test_sinc_resample_roundtrip_keeps_length_and_signal():
-    mix = synth_mix(44100, seconds=_SECONDS)
+    mix = _band_limited_mix(44100)
     up = audio_io.resample(mix, 44100, 48000)
     assert up.shape[-1] == round(mix.shape[-1] * 48000 / 44100)
     back = audio_io.match_length(audio_io.resample(up, 48000, 44100), mix.shape[-1])
