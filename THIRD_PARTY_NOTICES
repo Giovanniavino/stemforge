@@ -24,13 +24,16 @@ How the licenses were verified (2026-11-10)
   markupsafe 3.0.3, omegaconf 2.3.1, pycparser 3.0, tqdm 4.70.0): for
   those the PyPI JSON of that exact version, plus the license of the
   neighbouring installed version of the same project, decided.
-- Libraries embedded inside wheels (libsndfile, OpenBLAS, Intel OpenMP,
-  Qt's FFmpeg...): read from the Windows wheels installed in those two
-  environments (COPYING/LICENSE/NOTICE files in the wheel, DLL version
-  resources, version strings inside the binaries). The macOS and Linux
-  wheels of the same versions were NOT opened from the Windows dev-box:
-  entries marked "[to confirm on mac/linux wheel]" must be re-checked
-  when the Mac/Linux build runs.
+- Libraries embedded inside wheels (libsndfile, OpenBLAS, OpenMP
+  runtimes, Qt's FFmpeg...): read from the Windows wheels installed in
+  those two environments (COPYING/LICENSE/NOTICE files in the wheel, DLL
+  version resources, version strings inside the binaries) and, for the
+  macOS and Linux wheels of the exact locked versions, from the file
+  list of the wheel on PyPI / download.pytorch.org (zip directory read
+  with HTTP range requests) plus the license notes and version strings
+  of the relevant members. Nothing was executed. What is still marked
+  "[to confirm ...]" could not be settled that way and must be checked on
+  the built bundle.
 - tests/unit/test_docs_notices.py checks this file against the lock
   files: every pin of every distributed lock must appear in Part 2 with
   its version attributed to the right profile, and no Part 2 entry may
@@ -38,10 +41,10 @@ How the licenses were verified (2026-11-10)
 
 Profiles (BUILD_SPEC.md §2): legacy-intel = requirements-macos-x86_64.lock,
 mac-arm64 = requirements-macos-arm64.lock, win-x64 =
-requirements-windows-x64.lock, linux-x64 = requirements-linux-x64.lock
-(PENDING: that lock is produced by another work area; when it lands, add
-its versions to the entries below — the docs test will list what is
-missing).
+requirements-windows-x64.lock, linux-x64 = requirements-linux-x64.lock.
+The linux-x64 versions below were taken from the lock of the dependency
+work area (branch feat/deps-profiles, 2026-11-10), which is not yet in
+this checkout: when it lands, the docs test checks them like the others.
 
 Full license texts: the build must copy every distributed package's
 license files (the `*.dist-info/licenses` folder, or LICENSE/COPYING
@@ -64,42 +67,60 @@ PART 1 — FLAGS (read first)
 ===========================
 
 [!] BLOCKING — PyAV (`av==13.1.0`) is still in pyproject.toml and in the
-    three lock files of this commit. PyAV's own code is BSD-3-Clause, but
+    three lock files of this commit (the dependency work area removes it). PyAV's own code is BSD-3-Clause, but
     its wheels embed an FFmpeg configured with `--enable-gpl` plus x264 /
     x265: GPL-3.0. BUILD_SPEC D9 removes it in favour of our minimal LGPL
     FFmpeg. NO distributed build may contain PyAV. Its entry stays in
     Part 2 only so that every lock pin is accounted for; delete it when
     the locks no longer contain `av`.
 
-[!] TO CHECK IN THE BUILT BUNDLE — Qt modules that are GPL-3.0-only in
-    the open-source edition (Qt Virtual Keyboard, Qt Charts, Qt Data
-    Visualization, Qt Graphs, Qt Quick 3D, ...) are present in the
-    PySide6-Addons wheel. StemForge does not use them and the spec file
-    excludes their Python modules, but PyInstaller's QtGui hook collects
-    the `platforminputcontexts` plugins, and on PySide6 6.7.3 that folder
-    contains `qtvirtualkeyboardplugin` (which links Qt6VirtualKeyboard,
-    GPL-3.0). The built bundle must be listed and must contain no GPL-only
-    Qt library; otherwise the plugin must be excluded in the build.
+[!] TO FIX IN THE BUILD — Qt modules that are GPL-3.0-only in the
+    open-source edition (Qt Virtual Keyboard, Qt Charts, Qt Data
+    Visualization, Qt Graphs, Qt Quick 3D, ...) ship in the PySide6
+    wheels. StemForge does not use them, but the `platforminputcontexts`
+    plugin `qtvirtualkeyboardplugin` (it loads Qt6VirtualKeyboard,
+    GPL-3.0) sits in the PySide6-Essentials wheel itself — verified in
+    6.7.3 for Windows, macOS and Linux and in 6.4.3 for Windows and macOS
+    — and PyInstaller's QtGui hook collects that folder. The build must
+    exclude the plugin (and Qt6VirtualKeyboard*) and the built bundle
+    must be listed to prove that no GPL-only Qt library is inside.
 
-[!] PROPRIETARY BUT REDISTRIBUTABLE — the Windows torch wheels embed the
-    Intel OpenMP runtime (libiomp5md.dll; "Copyright (C) 1997-2025, Intel
-    Corporation"). It is not open source: PyPI lists `intel-openmp` under
-    the "Intel End User License Agreement for Developer Tools", which
-    allows redistributing the runtime. It does not affect the MIT license
-    of StemForge, but its license text must ship with the Windows build.
+[!] TO DECIDE IN THE BUILD — Qt Multimedia's FFmpeg backend. Qt 6.7.3
+    ships FFmpeg 7.0.2 as separate libraries (verified LGPL on Windows).
+    Qt 6.4.3 (legacy-intel) instead links FFmpeg n5.1 STATICALLY into
+    `ffmpegmediaplugin` (Windows wheel: source paths `ffmpeg-n5.1`; macOS
+    wheel: a 35 MB plugin). Its configuration could not be read from the
+    binary, and a statically linked LGPL library is not replaceable by the
+    user the way LGPL asks. On Qt 6.4 that backend is not the default one
+    (macOS uses AVFoundation): the legacy-intel build should exclude
+    `ffmpegmediaplugin`. If it is kept, its FFmpeg license and relinking
+    terms must be confirmed first.
 
-[!] setuptools (mac-arm64, win-x64 locks: a runtime dependency of torch
-    2.10 on Python 3.12) vendors `autocommand` 2.2.2, which is LGPL-3.0.
+[!] PROPRIETARY BUT REDISTRIBUTABLE — two torch wheels embed the Intel
+    OpenMP runtime: torch 2.10.0 for Windows (libiomp5md.dll, "Copyright
+    (C) 1997-2025, Intel Corporation") and torch 2.2.2 for macOS x86_64,
+    i.e. legacy-intel (torch/lib/libiomp5.dylib, "Intel(R) OMP ... ver.
+    5.0.20220623, Copyright (C) 1997-2022"). It is not open source: PyPI
+    lists `intel-openmp` under the "Intel End User License Agreement for
+    Developer Tools", which allows redistributing the runtime. It does not
+    affect the MIT license of StemForge, but its license text must ship
+    with those two builds. torch's own LICENSE/NOTICE files do not mention
+    it.
+
+[!] setuptools (mac-arm64, win-x64, linux-x64 locks: a runtime dependency
+    of torch 2.10 on Python 3.12) vendors `autocommand` 2.2.2, which is LGPL-3.0.
     StemForge never imports setuptools: excluding it from the bundle is
     the simplest fix; if it stays, the LGPL notice below applies to it.
 
 [ok] LGPL components (Qt/PySide6, libsndfile and its codecs, lameenc/LAME,
-    FFmpeg) are all shipped as separate shared libraries or a separate
+    libquadmath in numpy's macOS/Linux wheels, FFmpeg — except the Qt 6.4.3
+    plugin above) are all shipped as separate shared libraries or a separate
     executable that the user can replace, with their source linked here:
     compatible with distributing StemForge under MIT.
 [ok] MPL-2.0 components (certifi, parts of tqdm) are shipped unmodified;
     their source is linked here.
-[ok] The GCC runtime inside OpenBLAS (numpy) is GPL-3.0 WITH the GCC
+[ok] The GCC runtime libraries inside the numpy wheels (libgfortran,
+    libgcc_s) and torch's Linux wheel (libgomp) are GPL-3.0 WITH the GCC
     Runtime Library Exception, which explicitly allows this use.
 [ok] PyInstaller's bootloader is GPL-2.0-or-later WITH the bootloader
     exception, which allows distributing the combined executable under
@@ -128,18 +149,18 @@ source.
   source   : https://github.com/PyAV-Org/PyAV
 
 [certifi]
-  versions : 2026.7.22 (legacy-intel) | 2026.10.23 (mac-arm64, win-x64)
+  versions : 2026.7.22 (legacy-intel) | 2026.10.23 (mac-arm64, win-x64, linux-x64)
   license  : MPL-2.0
   copyright: Kenneth Reitz and contributors (CA bundle derived from Mozilla's root store)
   source   : https://github.com/certifi/python-certifi
 
 [cffi]
-  versions : 2.1.1 (legacy-intel, mac-arm64, win-x64)
+  versions : 2.1.1 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT-0
   source   : https://github.com/python-cffi/cffi
 
 [cloudpickle]
-  versions : 3.1.2 (legacy-intel, mac-arm64, win-x64)
+  versions : 3.1.2 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause
   copyright: Copyright (c) 2015, Cloudpickle contributors
   source   : https://github.com/cloudpipe/cloudpickle
@@ -151,159 +172,163 @@ source.
   source   : https://github.com/tartley/colorama
 
 [demucs]
-  versions : 4.0.1 (legacy-intel, mac-arm64, win-x64)
+  versions : 4.0.1 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT
   copyright: Copyright (c) Meta Platforms, Inc. and affiliates
   source   : https://github.com/facebookresearch/demucs
 
 [dora-search]
-  versions : 0.1.12 (legacy-intel) | 0.1.13 (mac-arm64, win-x64)
+  versions : 0.1.12 (legacy-intel) | 0.1.13 (mac-arm64, win-x64, linux-x64)
   license  : MIT
   copyright: Copyright (c) Facebook, Inc. and its affiliates
   source   : https://github.com/facebookresearch/dora
 
 [einops]
-  versions : 0.8.2 (legacy-intel, mac-arm64, win-x64)
+  versions : 0.8.2 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT
   copyright: Copyright (c) 2018 Alex Rogozhnikov
   source   : https://github.com/arogozhnikov/einops
 
 [filelock]
-  versions : 3.32.2 (legacy-intel) | 4.2.9 (mac-arm64, win-x64)
+  versions : 3.32.2 (legacy-intel) | 4.2.9 (mac-arm64, win-x64) | 4.2.10 (linux-x64)
   license  : MIT
   copyright: Copyright (c) Bernát Gábor and contributors
   source   : https://github.com/tox-dev/filelock
 
 [fsspec]
-  versions : 2026.7.0 (legacy-intel) | 2026.9.0 (mac-arm64, win-x64)
+  versions : 2026.7.0 (legacy-intel) | 2026.9.0 (mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause (2026.9.0 declares it; 2026.7.0 has empty PyPI metadata, same project LICENSE)
   copyright: Copyright (c) 2018, Martin Durant
   source   : https://github.com/fsspec/filesystem_spec
 
 [jinja2]
-  versions : 3.1.6 (legacy-intel, mac-arm64, win-x64)
+  versions : 3.1.6 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause (PyPI classifier "BSD License"; text in the wheel)
   copyright: Copyright 2007 Pallets
   source   : https://github.com/pallets/jinja
 
 [julius]
-  versions : 0.2.8 (legacy-intel, mac-arm64, win-x64)
+  versions : 0.2.8 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT
   copyright: Copyright 2020 Alexandre Défossez
   source   : https://github.com/adefossez/julius
 
 [lameenc]
-  versions : 1.8.4 (legacy-intel) | 1.9.0 (mac-arm64, win-x64)
+  versions : 1.8.4 (legacy-intel) | 1.9.0 (mac-arm64, win-x64, linux-x64)
   license  : LGPL-3.0-or-later (the extension statically contains LAME, LGPL-2.0-or-later)
   note     : imported by demucs.audio; shipped as a separate, replaceable extension module
   source   : https://github.com/chrisstaite/lameenc — LAME: https://lame.sourceforge.io/
 
 [markupsafe]
-  versions : 3.0.3 (legacy-intel) | 3.0.4 (mac-arm64, win-x64)
+  versions : 3.0.3 (legacy-intel) | 3.0.4 (mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause
   copyright: Copyright 2010 Pallets
   source   : https://github.com/pallets/markupsafe
 
 [mpmath]
-  versions : 1.3.0 (legacy-intel, mac-arm64, win-x64)
+  versions : 1.3.0 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause (PyPI: "BSD")
   copyright: Copyright (c) 2005-2021 Fredrik Johansson and mpmath contributors
   source   : https://github.com/mpmath/mpmath
 
 [networkx]
-  versions : 3.6.1 (legacy-intel) | 3.7 (mac-arm64, win-x64)
+  versions : 3.6.1 (legacy-intel) | 3.7 (mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause
   copyright: Copyright (c) 2004-2026, NetworkX Developers
   source   : https://github.com/networkx/networkx
 
 [numpy]
-  versions : 1.26.4 (legacy-intel) | 2.5.4 (mac-arm64, win-x64)
+  versions : 1.26.4 (legacy-intel) | 2.5.4 (mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause; 2.5.4 declares "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0"
   copyright: Copyright (c) 2005-2025, NumPy Developers
   embeds   : OpenBLAS (BSD-3-Clause), LAPACK (BSD-3-Clause-Open-MPI), GCC runtime
              (GPL-3.0-or-later WITH GCC-exception-3.1) — read from the 2.5.4 Windows wheel;
              Windows wheel also embeds msvcp140.dll (Microsoft VC++ runtime, see Part 3).
-             [to confirm on mac/linux wheel: numpy's macOS/Linux x86_64 wheels also embed
-             libgfortran and libquadmath (LGPL-2.1-or-later)]
+             macOS and Linux wheels (file lists checked: 1.26.4 macosx x86_64, 2.5.4
+             macosx arm64, 2.5.4 manylinux x86_64): OpenBLAS (libopenblas64_ /
+             libscipy_openblas64_), libgfortran (GPL-3.0 WITH GCC-exception-3.1),
+             libquadmath (LGPL-2.1-or-later, separate shared library), and on macOS
+             libgcc_s (GPL-3.0 WITH GCC-exception-3.1).
   source   : https://github.com/numpy/numpy
 
 [omegaconf]
-  versions : 2.3.1 (legacy-intel) | 2.4.0 (mac-arm64, win-x64)
+  versions : 2.3.1 (legacy-intel) | 2.4.0 (mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause (PyPI classifier "BSD License"; 3-clause text in the wheel)
   copyright: Copyright (c) 2018, Omry Yadan
   source   : https://github.com/omry/omegaconf
 
 [openunmix]
-  versions : 1.3.0 (legacy-intel, mac-arm64, win-x64)
+  versions : 1.3.0 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT
   copyright: Copyright (c) 2019 Inria (Fabian-Robert Stöter, Antoine Liutkus)
   source   : https://github.com/sigsep/open-unmix-pytorch
 
 [pycparser]
-  versions : 3.0 (legacy-intel) | 3.12 (mac-arm64, win-x64)
+  versions : 3.0 (legacy-intel) | 3.12 (mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause
   copyright: Copyright (c) 2008-2027, Eli Bendersky
   source   : https://github.com/eliben/pycparser
 
 [pyside6]
-  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64)
+  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64, linux-x64)
   license  : LGPL-3.0-only (community edition; also offered under GPL-2.0/GPL-3.0 and commercial terms)
   copyright: Copyright (C) The Qt Company Ltd.
   source   : https://code.qt.io/cgit/pyside/pyside-setup.git/ (tag v6.4.3 / v6.7.3)
 
 [pyside6-addons]
-  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64)
+  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64, linux-x64)
   license  : LGPL-3.0-only — some Qt add-on modules inside are GPL-3.0-only: see Part 1
   source   : https://code.qt.io/cgit/pyside/pyside-setup.git/
 
 [pyside6-essentials]
-  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64)
+  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64, linux-x64)
   license  : LGPL-3.0-only (contains the Qt libraries: see "Qt" in Part 3)
   source   : https://code.qt.io/cgit/pyside/pyside-setup.git/
 
 [pyyaml]
-  versions : 6.0.3 (legacy-intel, mac-arm64, win-x64)
+  versions : 6.0.3 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT
   copyright: Copyright (c) 2017-2021 Ingy döt Net, Copyright (c) 2006-2016 Kirill Simonov
   source   : https://github.com/yaml/pyyaml
 
 [retrying]
-  versions : 1.4.2 (legacy-intel, mac-arm64, win-x64)
+  versions : 1.4.2 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : Apache-2.0 (NOTICE file shipped in the wheel)
   copyright: Copyright 2013 Ray Holder
   source   : https://github.com/groodt/retrying
 
 [setuptools]
-  versions : 84.2.1 (mac-arm64, win-x64)
+  versions : 84.2.1 (mac-arm64, win-x64, linux-x64)
   license  : MIT; vendors autocommand 2.2.2 (LGPL-3.0) — see Part 1
   source   : https://github.com/pypa/setuptools
 
 [shiboken6]
-  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64)
+  versions : 6.4.3 (legacy-intel) | 6.7.3 (mac-arm64, win-x64, linux-x64)
   license  : LGPL-3.0-only (community edition)
   source   : https://code.qt.io/cgit/pyside/pyside-setup.git/
 
 [soundfile]
-  versions : 0.14.0 (legacy-intel, mac-arm64, win-x64)
+  versions : 0.14.0 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause
   copyright: Copyright (c) 2013, Bastian Bechtold
-  embeds   : libsndfile and its codecs — see "libsndfile" in Part 3
+  embeds   : libsndfile and its codecs — see "libsndfile" in Part 3; the macOS and Linux
+             wheels also ship licensing/license_notes.md with the codec copyrights
   source   : https://github.com/bastibe/python-soundfile
 
 [submitit]
-  versions : 1.5.4 (legacy-intel, mac-arm64, win-x64)
+  versions : 1.5.4 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : MIT (PyPI classifier; MIT text in the wheel)
   copyright: Copyright (c) Facebook, Inc. and its affiliates
   source   : https://github.com/facebookincubator/submitit
 
 [sympy]
-  versions : 1.14.0 (legacy-intel, mac-arm64, win-x64)
+  versions : 1.14.0 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : BSD-3-Clause (PyPI: "BSD")
   copyright: Copyright (c) 2006-2023 SymPy Development Team
   source   : https://github.com/sympy/sympy
 
 [torch]
-  versions : 2.2.2 (legacy-intel) | 2.10.0 (mac-arm64, win-x64)
+  versions : 2.2.2 (legacy-intel) | 2.10.0 (mac-arm64, win-x64) | 2.10.0+cpu (linux-x64)
   license  : BSD-3-Clause
   copyright: Copyright (c) 2016- Facebook, Inc (Adam Paszke) and the PyTorch contributors
   embeds   : third-party code listed in the wheel's LICENSE and NOTICE files (115 entries in
@@ -311,31 +336,34 @@ source.
              (sleef), zstd (BSD-3-Clause, dual-licensed with GPL-2.0: the BSD option applies),
              public-domain items. No copyleft-only component is compiled in (a GPL text in
              the file belongs to the test folder of `cpr`, not shipped as code).
-             Windows: Intel OpenMP runtime libiomp5md.dll — see Part 1.
-             [to confirm on mac/linux wheel: macOS wheels embed LLVM libomp
-             (Apache-2.0 WITH LLVM-exception); Linux CPU wheels embed GNU libgomp
-             (GPL-3.0 WITH GCC-exception-3.1)]
+             OpenMP runtime, by wheel (file lists checked):
+               2.10.0 win-x64        libiomp5md.dll  Intel OpenMP, proprietary — see Part 1
+               2.2.2 macosx x86_64   libiomp5.dylib  Intel OpenMP, proprietary — see Part 1
+               2.10.0 macosx arm64   libomp.dylib    LLVM OpenMP (Apache-2.0 WITH LLVM-exception)
+               2.10.0+cpu manylinux  libgomp.so.1    GNU OpenMP (GPL-3.0 WITH GCC-exception-3.1)
+             The linux-x64 lock takes torch from https://download.pytorch.org/whl/cpu
+             (CPU-only build, no CUDA libraries).
   source   : https://github.com/pytorch/pytorch
 
 [torchaudio]
-  versions : 2.2.2 (legacy-intel) | 2.10.0 (mac-arm64, win-x64)
+  versions : 2.2.2 (legacy-intel) | 2.10.0 (mac-arm64, win-x64) | 2.10.0+cpu (linux-x64)
   license  : BSD-2-Clause (PyPI classifier "BSD License"; BSD 2-Clause text in the wheel)
   copyright: Copyright (c) 2017 Facebook Inc. (Soumith Chintala)
   source   : https://github.com/pytorch/audio
 
 [tqdm]
-  versions : 4.70.0 (legacy-intel) | 4.70.1 (mac-arm64, win-x64)
+  versions : 4.70.0 (legacy-intel) | 4.70.1 (mac-arm64, win-x64, linux-x64)
   license  : MPL-2.0 AND MIT
   copyright: Copyright (c) 2013 noamraph; tqdm developers
   source   : https://github.com/tqdm/tqdm
 
 [treetable]
-  versions : 0.2.6 (legacy-intel, mac-arm64, win-x64)
+  versions : 0.2.6 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : Unlicense (public-domain dedication; text in the wheel)
   source   : https://github.com/adefossez/treetable
 
 [typing-extensions]
-  versions : 4.16.0 (legacy-intel, mac-arm64, win-x64)
+  versions : 4.16.0 (legacy-intel, mac-arm64, win-x64, linux-x64)
   license  : PSF-2.0
   copyright: Copyright (c) Python Software Foundation
   source   : https://github.com/python/typing_extensions
@@ -355,14 +383,20 @@ PART 3 — NATIVE LIBRARIES, RUNTIMES AND TOOLS IN THE PACKAGE
              https://download.qt.io/archive/qt/6.7/6.7.3/single/
 
 [FFmpeg inside Qt Multimedia]
-  versions : FFmpeg 7.0.2 (Qt 6.7.3 wheels: avcodec-61, avformat-61, avutil-59, swresample-5,
-             swscale-8 + the Qt "ffmpegmediaplugin"); absent from Qt 6.4.3
-  license  : LGPL-2.1-or-later — verified: libavutil reports "LGPL version 2.1 or later" and
-             the configure line has no --enable-gpl / --enable-nonfree (Windows wheel)
-             [to confirm on mac/linux wheel]
-  note     : only present if the build collects Qt's FFmpeg media backend; if it is
-             excluded, remove this entry.
+  versions : FFmpeg 7.0.2 in Qt 6.7.3 (mac-arm64, win-x64, linux-x64): Windows and macOS
+             wheels ship avcodec-61, avformat-61, avutil-59, swresample-5, swscale-8 as
+             separate libraries (macOS: libavcodec.61.3.100.dylib ...) next to the Qt
+             "ffmpegmediaplugin"; the Linux wheel has only the plugin (19 MB) and no
+             separate libav* files [to confirm on the built AppImage: statically linked?]
+             FFmpeg n5.1 in Qt 6.4.3 (legacy-intel): statically linked into
+             "ffmpegmediaplugin" — see Part 1, the build should exclude it
+  license  : LGPL-2.1-or-later — verified for 7.0.2 on the Windows wheel: libavutil reports
+             "LGPL version 2.1 or later" and the configure line has no --enable-gpl /
+             --enable-nonfree. [to confirm for the macOS/Linux 7.0.2 builds and for n5.1]
+  note     : only present if the build collects Qt's FFmpeg media backend (Qt 6.7 uses it
+             for the stem preview); if it is excluded, remove this entry.
   source   : https://ffmpeg.org/releases/ffmpeg-7.0.2.tar.xz
+             https://ffmpeg.org/releases/ffmpeg-5.1.tar.xz (only if the Qt 6.4.3 plugin stays)
 
 [FFmpeg — StemForge's minimal audio decoder]
   versions : 7.1.x — EXACT VERSION TO BE FILLED IN AT INTEGRATION (packaging/ffmpeg/)
@@ -375,20 +409,23 @@ PART 3 — NATIVE LIBRARIES, RUNTIMES AND TOOLS IN THE PACKAGE
              in packaging/ffmpeg/ of the StemForge repository at the release tag.
 
 [libsndfile]
-  versions : libsndfile 1.2.2, embedded in the soundfile 0.14.0 wheel (Windows wheel verified)
+  versions : libsndfile 1.2.2, embedded in the soundfile 0.14.0 wheels ("libsndfile-1.2.2" read
+             in libsndfile_x64.dll, libsndfile_arm64.dylib, libsndfile_x86_64.dylib and
+             libsndfile_x86_64.so of the Windows, macOS arm64/x86_64 and Linux wheels)
   license  : LGPL-2.1-or-later
   copyright: Copyright (C) 1999-2025 Erik de Castro Lopo and the libsndfile contributors
   source   : https://github.com/libsndfile/libsndfile
   license text: the wheel ships it as _soundfile_data/COPYING (LGPL-2.1)
-  codecs statically built into that library (from the version strings inside
-  libsndfile_x64.dll of the Windows wheel; libogg and libmpg123 print no version):
+  codecs statically built into that library (versions from the strings inside
+  libsndfile_x64.dll of the Windows wheel; libogg and libmpg123 print no version;
+  the same six libraries are listed in licensing/license_notes.md of the macOS and
+  Linux wheels):
     libFLAC 1.4.3   BSD-3-Clause      Xiph.Org Foundation, Josh Coalson   https://github.com/xiph/flac
     libogg          BSD-3-Clause      Xiph.Org Foundation                 https://github.com/xiph/ogg
     libvorbis 1.3.7 BSD-3-Clause      Xiph.Org Foundation                 https://github.com/xiph/vorbis
     libopus 1.5.2   BSD-3-Clause      Xiph.Org, Skype, Octasic, et al.    https://github.com/xiph/opus
     libmpg123       LGPL-2.1          the mpg123 project                  https://www.mpg123.de/
     LAME 3.100      LGPL-2.0-or-later the LAME project                    https://lame.sourceforge.io/
-  [to confirm on mac/linux wheel: same library set expected, versions may differ]
 
 [Demucs pretrained weights — downloaded on first launch, not inside the package]
   models   : htdemucs_ft (4 files), htdemucs_6s (BUILD_SPEC §5.8)

@@ -115,19 +115,54 @@ def test_every_distributed_pin_is_listed_with_its_profile():
     )
 
 
-def test_no_stale_python_package_entries():
-    pins = _lock_pins()
+def _present_profiles() -> set[str]:
+    return {profile for lock, profile in DISTRIBUTED_LOCKS.items() if (ROOT / lock).exists()}
+
+
+def _stale_entries(
+    sections: dict[str, dict[str, str]],
+    pins: dict[tuple[str, str], set[str]],
+    present: set[str],
+) -> list[str]:
+    """Le voci che descrivono ciò che i lock presenti non distribuiscono.
+
+    Un profilo il cui lock non è in questo checkout non si può smentire:
+    le sue versioni si controllano quando il lock arriva (e allora le
+    controlla anche test_every_distributed_pin_is_listed_with_its_profile).
+    """
     distributed = {name for name, _ in pins}
-    versions_in_locks = {(name, ver): profiles for (name, ver), profiles in pins.items()}
     stale: list[str] = []
-    for name, entry in sorted(_sections().items()):
-        if name not in distributed:
+    for name, entry in sorted(sections.items()):
+        listed = _versions_by_profile(entry.get("versions", ""))
+        if name not in distributed and any(profiles & present for profiles in listed.values()):
             stale.append(f"[{name}]: in nessun lock distribuito, togliere la voce")
             continue
-        for version, profiles in _versions_by_profile(entry.get("versions", "")).items():
-            for profile in sorted(profiles - versions_in_locks.get((name, version), set())):
+        for version, profiles in listed.items():
+            for profile in sorted((profiles & present) - pins.get((name, version), set())):
                 stale.append(f"[{name}] {version} ({profile}): il lock di quel profilo non la contiene")
+    return stale
+
+
+def test_no_stale_python_package_entries():
+    stale = _stale_entries(_sections(), _lock_pins(), _present_profiles())
     assert not stale, "voci non più vere in THIRD_PARTY_NOTICES:\n  " + "\n  ".join(stale)
+
+
+def test_stale_check_fails_on_present_profiles_only():
+    sections = {
+        "pkg": {"versions": "1.0 (win-x64) | 1.1 (linux-x64)"},
+        "gone": {"versions": "2.0 (win-x64)"},
+    }
+    pins = {("pkg", "1.0"): {"win-x64"}}
+    # lock linux assente: la sua versione non si può smentire, la voce
+    # sparita dal lock Windows sì
+    assert _stale_entries(sections, pins, {"win-x64"}) == [
+        "[gone]: in nessun lock distribuito, togliere la voce"
+    ]
+    # lock linux presente ma senza quella versione: segnalata
+    assert "[pkg] 1.1 (linux-x64): il lock di quel profilo non la contiene" in _stale_entries(
+        sections, pins, {"win-x64", "linux-x64"}
+    )
 
 
 def test_every_entry_declares_license_and_source():
