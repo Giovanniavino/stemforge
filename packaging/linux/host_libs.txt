@@ -1,0 +1,59 @@
+# Librerie che l'AppImage NON porta con se': le fornisce il sistema.
+# Un'espressione regolare per riga, confrontata col nome del file (soname).
+# Le legge packaging/linux/bundle_libs.py: una di queste trovata nel
+# pacchetto viene tolta, e una dipendenza che manca e NON e' qui fa
+# fallire la build. Ogni gruppo dice perche' e' dell'host.
+#
+# Tutto il resto che Qt chiede (libxcb-cursor, xcb-util-*, le estensioni
+# libxcb, libxkbcommon...) entra nel pacchetto: sono MIT/X11, con ABI
+# stabile, e una distribuzione desktop non le installa sempre (Qt >= 6.5
+# senza libxcb-cursor0 non apre nessuna finestra su X11).
+
+# glibc: deve essere quella del sistema, il pacchetto e' compilato per >= 2.28
+^ld-linux-x86-64\.so\.2$
+^lib(c|m|dl|pthread|rt|util|resolv|nsl|anl|mvec|crypt|BrokenLocale|thread_db)\.so\.\d+$
+^libnss_.*\.so\.\d+$
+^linux-vdso\.so\.1$
+
+# runtime del compilatore C/C++: quella del sistema e' piu' recente e
+# compatibile (manylinux_2_28 chiede al massimo GLIBCXX_3.4.25, Ubuntu
+# 20.04 ha la 3.4.28); una copia vecchia nel pacchetto romperebbe i
+# driver grafici che il processo carica e che vogliono la loro
+^libstdc\+\+\.so\.6$
+^libgcc_s\.so\.1$
+
+# grafica: legata al driver della GPU della macchina (libglvnd, Mesa)
+^lib(GL|EGL|GLX|OpenGL|GLdispatch|GLESv1_CM|GLESv2)\.so\.\d+$
+^libdrm\.so\.\d+$
+^libgbm\.so\.\d+$
+^libxcb-(dri2|dri3|glx|present)\.so\.\d+$
+
+# X11 di base: parla col server X dell'host, e' in ogni sessione X11/XWayland
+^libX11\.so\.6$
+^libX11-xcb\.so\.1$
+^libxcb\.so\.1$
+^libXau\.so\.6$
+^libXdmcp\.so\.6$
+
+# font: un fontconfig vecchio non legge la configurazione di uno recente
+^libfontconfig\.so\.1$
+^libfreetype\.so\.6$
+
+# Wayland: ABI del compositore; se manca, Qt ripiega su xcb (XWayland)
+^libwayland-(client|cursor|egl)\.so\.\d+$
+
+# servizi di sessione e tema del desktop: devono essere quelli dell'host
+^libdbus-1\.so\.3$
+^lib(glib|gobject|gio|gmodule|gthread)-2\.0\.so\.0$
+^lib(gtk|gdk)-3\.so\.0$
+^lib(pango|pangocairo|pangoft2)-1\.0\.so\.0$
+^lib(cairo|cairo-gobject)\.so\.2$
+^libgdk_pixbuf-2\.0\.so\.0$
+^lib(atk|atk-bridge)-(1\.0|2\.0)\.so\.0$
+
+# audio di sistema (anteprima, QtMultimedia): il server e' dell'host
+^libpulse\.so\.0$
+^libasound\.so\.2$
+
+# zlib: presente in ogni installazione, ABI ferma da vent'anni
+^libz\.so\.1$

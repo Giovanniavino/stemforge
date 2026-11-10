@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=StemForge
+GenericName=Stem separator
+GenericName[it]=Separatore di stem
+Comment=Split a song into stems and drag them into your DAW
+Comment[it]=Separa un brano in stem e trascinali nella DAW
+Exec=StemForge %F
+Icon=stemforge
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=stems;separation;audio;music;DAW;
+Keywords[it]=stem;separazione;audio;musica;DAW;
+StartupWMClass=StemForge
+MimeType=audio/wav;audio/x-wav;audio/vnd.wave;audio/mpeg;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/vorbis;audio/mp4;audio/x-m4a;audio/aac;audio/aiff;audio/x-aiff;
