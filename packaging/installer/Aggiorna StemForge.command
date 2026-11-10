@@ -50,8 +50,8 @@ say "Controllo l'ambiente esistente"
 [ -x "$PYBIN" ] || die "ambiente di costruzione non trovato: su questo Mac
 serve prima l'installazione completa (Installa StemForge.command)."
 # un ambiente di prima del passaggio a Catalina puo' avere un altro Python
-"$PYBIN" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 11))' \
-    || die "l'ambiente esistente non usa Python 3.11: rifai l'installazione
+is_python311_intel "$PYBIN" \
+    || die "l'ambiente esistente non usa Python 3.11 per Intel: rifai l'installazione
 completa con Installa StemForge.command."
 
 say "Allineo le dipendenze a questa versione (scarico solo cio' che manca)"

@@ -78,12 +78,14 @@ echo "    macOS $MACOS_VERSION, Intel x86_64: ok."
 # ------------------------------------------------------------- 2. Python
 say "Cerco Python 3.11"
 PYTHON=""
+# un python3.11 solo arm64 (Homebrew su Apple Silicon) costruirebbe per
+# l'architettura sbagliata: lo spec lo rifiuterebbe dopo 1 GB di download
 for candidate in \
     "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
     "/usr/local/bin/python3.11" \
     "$(command -v python3.11 2>/dev/null || true)"
 do
-    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    if [ -n "$candidate" ] && is_python311_intel "$candidate"; then
         PYTHON="$candidate"
         break
     fi
@@ -91,15 +93,17 @@ done
 
 if [ -z "$PYTHON" ]; then
     say "Python 3.11 non trovato: scarico quello ufficiale (python.org)"
-    PKG="/tmp/stemforge-python-${PY_VERSION}.pkg"
+    PKG_DIR="$(mktemp -d)"
+    PKG="$PKG_DIR/python-${PY_VERSION}-macos11.pkg"
     curl -fL --progress-bar "$PY_PKG_URL" -o "$PKG" || die "download di Python non riuscito. Controlla la connessione e riprova."
+    check_python_pkg "$PKG"
     say "Installo Python ${PY_VERSION} (ti chiedera' la password)"
     sudo installer -pkg "$PKG" -target / || die "installazione di Python non riuscita."
-    rm -f "$PKG"
+    rm -rf "$PKG_DIR"
     PYTHON="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11"
-    [ -x "$PYTHON" ] || die "Python installato ma non trovato dove atteso."
+    is_python311_intel "$PYTHON" || die "Python installato ma non trovato dove atteso."
 fi
-echo "    uso: $PYTHON ($("$PYTHON" -c 'import platform; print(platform.python_version())'))"
+echo "    uso: $PYTHON ($("$PYTHON" -c 'import platform; print(platform.python_version())'), x86_64)"
 
 # -------------------------------------------------- 3. dipendenze verificate
 say "Preparo l'ambiente di costruzione (puo' richiedere qualche minuto)"

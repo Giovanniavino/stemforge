@@ -24,6 +24,28 @@ warn_box() {
     printf '\n\033[33m\033[1m!!! ATTENZIONE !!!\033[0m\n\033[33m%s\033[0m\n' "$1"
 }
 
+# Il profilo legacy-intel si costruisce solo con un Python 3.11 x86_64
+# (PySide6 6.4 vuole < 3.12; torch 2.2.2 esiste solo per Intel).
+is_python311_intel() {
+    [ -x "$1" ] || return 1
+    "$1" -c 'import platform, sys
+sys.exit(not (sys.version_info[:2] == (3, 11) and platform.machine() == "x86_64"))' 2>/dev/null
+}
+
+# Il pacchetto di python.org non ha un hash pubblicato stabile da fissare
+# qui, ma e' firmato dalla Python Software Foundation con una Developer ID
+# di Apple: si accetta solo con quella firma valida.
+check_python_pkg() {
+    signature="$(pkgutil --check-signature "$1" 2>&1)" \
+        || die "il pacchetto di Python scaricato non ha una firma valida:
+$signature"
+    case "$signature" in
+        *"Developer ID Installer: Python Software Foundation"*) ;;
+        *) die "il pacchetto di Python scaricato non e' firmato dalla Python Software Foundation:
+$signature" ;;
+    esac
+}
+
 # Installa (o completa) l'ambiente dai lock con gli hash. pip salta cio'
 # che e' gia' presente alla versione giusta: in un aggiornamento scarica
 # solo quello che il lock nuovo aggiunge o cambia.
