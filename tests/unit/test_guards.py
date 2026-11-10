@@ -126,16 +126,16 @@ def test_relative_imports_are_resolved():
 
 # -- API di piattaforma (§10.4, D6) -----------------------------------------
 # Il motore e' identico ovunque: chi chiede "su che sistema sono?" sta solo
-# nei moduli che esistono per rispondere a quella domanda.
+# nei moduli che esistono per rispondere a quella domanda. (packaging/ e'
+# fuori da src/: non serve un'eccezione.)
 PLATFORM_ALLOWED_DIRS = ("ui/",)
 PLATFORM_ALLOWED_FILES = ("engine/paths.py", "engine/device.py", "engine/ffmpeg.py")
 _PLATFORM_ATTRS = {
     ("sys", "platform"), ("sys", "getwindowsversion"), ("os", "name"),
     ("os", "uname"), ("os", "startfile"),
 }
-_PLATFORM_MODULES = ("platform", "winreg", "_winreg", "ctypes", "msvcrt", "_winapi")
-_FROM_IMPORTS = {("sys", "platform"), ("sys", "getwindowsversion"), ("os", "name"),
-                 ("os", "uname"), ("os", "startfile")}
+# webbrowser.open su un file locale e' l'apri-file di sistema sotto altro nome
+_PLATFORM_MODULES = ("platform", "winreg", "_winreg", "ctypes", "msvcrt", "_winapi", "webbrowser")
 _OPENERS = {"open", "explorer", "explorer.exe", "xdg-open", "gio", "start", "osascript"}
 _LAUNCHERS = {"run", "Popen", "call", "check_call", "check_output", "system", "popen"}
 # worker/selftest.py descrive il sistema nel report di diagnostica (§9.9,
@@ -147,9 +147,20 @@ REPORT_ONLY = {"worker/selftest.py": frozenset({
 })}
 
 
-def _dotted(node: ast.AST) -> tuple[str, str] | None:
+def _module_aliases(tree: ast.AST) -> dict[str, str]:
+    """Nome locale -> modulo: `import sys as _s; _s.platform` non sfugge."""
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                aliases[alias.asname or root] = alias.name if alias.asname else root
+    return aliases
+
+
+def _dotted(node: ast.AST, aliases: dict[str, str]) -> tuple[str, str] | None:
     if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-        return node.value.id, node.attr
+        return aliases.get(node.value.id, node.value.id), node.attr
     return None
 
 
@@ -184,9 +195,10 @@ def _decision_nodes(tree: ast.AST) -> set[int]:
 
 def _report_only_violations(tree: ast.AST, allowed: frozenset[str]) -> list[str]:
     decisions = _decision_nodes(tree)
+    aliases = _module_aliases(tree)
     found: list[str] = []
     for node in ast.walk(tree):
-        attr = _dotted(node)
+        attr = _dotted(node, aliases)
         if attr is None or attr[0] != "platform":
             continue
         if attr[1] not in allowed:
@@ -203,7 +215,7 @@ def _import_uses(node: ast.AST, report_only: bool) -> list[str]:
                 and not (report_only and a.name == "platform")]
     if isinstance(node, ast.ImportFrom) and not node.level and node.module:
         if node.module.split(".")[0] in _PLATFORM_MODULES or any(
-            (node.module, a.name) in _FROM_IMPORTS for a in node.names
+            (node.module, a.name) in _PLATFORM_ATTRS for a in node.names
         ):
             return [f"{node.lineno}: from {node.module} import ..."]
     return []
@@ -212,9 +224,10 @@ def _import_uses(node: ast.AST, report_only: bool) -> list[str]:
 def platform_api_uses(source: str, report_only: frozenset[str] | None = None) -> list[str]:
     """Usi di API di piattaforma in `source`, come "riga: cosa"."""
     tree = ast.parse(source)
+    aliases = _module_aliases(tree)
     found: list[str] = []
     for node in ast.walk(tree):
-        if (attr := _dotted(node)) in _PLATFORM_ATTRS:
+        if (attr := _dotted(node, aliases)) in _PLATFORM_ATTRS:
             found.append(f"{node.lineno}: {attr[0]}.{attr[1]}")
         elif isinstance(node, ast.Call) and _launches_opener(node):
             found.append(f"{node.lineno}: lancia un apri-file di sistema")
@@ -239,18 +252,29 @@ def test_platform_apis_only_where_allowed():
     )
 
 
+def test_report_only_exception_still_exists():
+    """Se selftest.py cambia nome l'eccezione va tolta, non lasciata a
+    coprire il file che domani prendera' quel nome."""
+    for rel in REPORT_ONLY:
+        assert (SRC / rel).is_file(), f"eccezione per un file che non c'e' piu': {rel}"
+
+
 def test_platform_guard_catches_what_it_promises():
     """La guardia deve poter fallire: ogni forma vietata viene vista."""
     caught = [
         "import sys\nif sys.platform == 'darwin': pass",
+        "import sys as _s\nx = _s.platform",
         "import os\nx = os.name",
         "import platform\nplatform.system()",
         "import winreg",
         "import ctypes.wintypes",
         "from ctypes import windll",
         "from sys import platform",
+        "from os import name",
+        "import webbrowser",
         "import subprocess\nsubprocess.Popen(['xdg-open', 'x'])",
         "import subprocess\nsubprocess.run(('open', '-R', 'x'))",
+        "from subprocess import run\nrun(['explorer', '/select,x'])",
         "import os\nos.system('explorer /select,x')",
         "import os\nos.startfile('x')",
     ]
@@ -261,6 +285,7 @@ def test_platform_guard_catches_what_it_promises():
         "import os\nos.environ.get('X')\nos.path.join('a', 'b')",
         "import subprocess\nsubprocess.run(['ffmpeg', '-i', 'x'])",
         "with open('x') as f: pass",
+        "import numpy as np\nnp.name = 1",
     ]
     for snippet in allowed:
         assert not platform_api_uses(snippet), f"falso allarme: {snippet!r}"
@@ -273,6 +298,8 @@ def test_report_only_exception_stays_narrow():
         "import platform\nif platform.system() == 'Darwin': pass",
         "import platform\nok = platform.machine() in ('arm64',)",
         "import platform\nplatform.win32_ver()",
+        "import platform as p\np.win32_ver()",
+        "from platform import system",
         "import sys\nsys.platform",
         "import winreg",
     ):
