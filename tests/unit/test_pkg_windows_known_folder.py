@@ -50,3 +50,17 @@ def test_known_folder_matches_what_windows_registers(wi, folder: str):
 def test_unknown_folder_id_is_an_error_not_a_guess(wi):
     with pytest.raises(OSError):
         wi.known_folder("00000000-0000-0000-0000-000000000001")
+
+
+@pytest.mark.parametrize("folder", sorted(_REGISTRY_NAMES))
+def test_qt_standard_paths_follow_the_redirection(wi, folder: str):
+    """La correzione proposta per ui/app.py (Musica vera, non Path.home()/Music)
+    si regge su QStandardPaths: qui si prova che Qt chiede a Windows e non
+    ricostruisce il percorso, anche per una cartella spostata da OneDrive
+    (sul dev-box lo è il Desktop)."""
+    from PySide6.QtCore import QStandardPaths
+
+    locations = {"MUSIC": QStandardPaths.MusicLocation, "DESKTOP": QStandardPaths.DesktopLocation}
+    from_qt = Path(QStandardPaths.writableLocation(locations[folder]))
+    expected = wi.known_folder(getattr(wi, f"FOLDERID_{folder}"))
+    assert os.path.normcase(from_qt) == os.path.normcase(expected)
