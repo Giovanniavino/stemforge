@@ -122,7 +122,8 @@ make_appdir() {
     mkdir -p "$APPDIR/usr/lib" "$APPDIR/usr/share/applications" \
         "$APPDIR/usr/share/icons/hicolor/256x256/apps"
     cp -a "$WORK/dist/StemForge" "$APPDIR/usr/lib/stemforge"
-    "$VENV/bin/python" "$HERE/bundle_libs.py" "$APPDIR/usr/lib/stemforge" "$HERE/host_libs.txt"
+    "$VENV/bin/python" "$HERE/bundle_libs.py" "$APPDIR/usr/lib/stemforge" "$HERE/host_libs.txt" \
+        --report "$WORK/system-libs.txt" >/dev/null
     install -m 0755 "$HERE/AppRun" "$APPDIR/AppRun"
     install -m 0644 "$HERE/stemforge.desktop" "$APPDIR/usr/share/applications/stemforge.desktop"
     ln -s usr/share/applications/stemforge.desktop "$APPDIR/stemforge.desktop"
@@ -165,6 +166,9 @@ make_appimage() {
         "$TOOLS/appimagetool-$APPIMAGETOOL_VERSION.AppImage" -n \
         --runtime-file "$TOOLS/runtime-$RUNTIME_VERSION-x86_64" "$APPDIR" "$output"
     (cd "$DIST" && sha256sum "$(basename "$output")" > "$(basename "$output").sha256")
+    # librerie di sistema entrate nel pacchetto, con rpm e licenza: la
+    # materia prima di THIRD_PARTY_NOTICES per questo profilo (§11.11)
+    cp "$WORK/system-libs.txt" "$DIST/StemForge-$version-linux-x86_64.libs.txt"
     log "AppImage: $output"
     cat "$output.sha256"
 }
