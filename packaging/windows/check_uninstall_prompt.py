@@ -11,6 +11,10 @@ Poi tre giri, ognuno installa in silenzio e disinstalla:
   predefinito è No, la cartella resta;
 - interattivo, risposta Sì: la cartella sparisce.
 
+Un quarto giro, con un installer compilato come se i percorsi lunghi di
+Windows fossero spenti (/DAssumeLongPathsDisabled), controlla che una
+/DIR= di un carattere oltre il limite sia rifiutata e una al limite no.
+
 Le finestre del disinstallatore (MessageBox Win32, classe #32770) si
 leggono e si premono con user32: niente dipendenze, niente click a
 coordinate.
@@ -33,10 +37,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import windows_integration as wi  # noqa: E402
-from make_ico import make_ico  # noqa: E402
+from build_installer import compile_installer  # noqa: E402
 
 FAKE_DATA_DIR = "StemForge-collaudo-disinstallazione"
-_IDOK, _IDYES, _IDNO = 1, 6, 7
+# un file profondo come quelli di torch e Qt: fissa il limite della cartella
+FAKE_DEEP_FILE = "_internal/" + "/".join(["cartella-profonda-di-prova"] * 4) + "/libreria.dll"
+_IDOK, _IDCANCEL, _IDYES, _IDNO = 1, 2, 6, 7
 _BM_CLICK = 0x00F5
 _DM_GETDEFID = 0x0400
 _DC_HASDEFID = 0x534B
@@ -103,7 +109,9 @@ def _answer(hwnd: int, text: str, data_dir: Path, answer: int) -> dict:
     elif _user32.GetDlgItem(hwnd, _IDYES):
         seen = {"kind": "conferma", "pressed": _IDYES}
     else:
-        seen = {"kind": "avviso", "pressed": _IDOK}
+        # in una MessageBox col solo OK il pulsante ha l'id di IDCANCEL (Esc la chiude)
+        ok_button = _IDOK if _user32.GetDlgItem(hwnd, _IDOK) else _IDCANCEL
+        seen = {"kind": "avviso", "pressed": ok_button}
     seen["text"] = text
     if not _press(hwnd, seen["pressed"]):
         raise AssertionError(f"pulsante {seen['pressed']} assente in: {text!r}")
@@ -123,9 +131,10 @@ def _process_alive(pid: int) -> bool:
 def _drive_dialogs(data_dir: Path, answer: int, command: list[str]) -> list[dict]:
     """Avvia il disinstallatore interattivo e risponde finché non ha finito.
 
-    Il disinstallatore si copia in %TEMP% e il processo lanciato esce
-    subito: si segue la copia, cioè il processo che possiede le finestre."""
-    subprocess.run(command, check=True)
+    Il disinstallatore si copia in %TEMP% e la copia possiede le finestre;
+    il processo lanciato aspetta che la conferma iniziale abbia risposta,
+    quindi non lo si attende prima di rispondere (sarebbe una gara)."""
+    launcher = subprocess.Popen(command)
     dialogs: list[dict] = []
     handled: set[int] = set()
     owners: set[int] = set()
@@ -135,9 +144,12 @@ def _drive_dialogs(data_dir: Path, answer: int, command: list[str]) -> list[dict
             handled.add(hwnd)
             owners.add(_window_pid(hwnd))
             dialogs.append(_answer(hwnd, text, data_dir, answer))
-        if owners and not any(_process_alive(pid) for pid in owners):
+        if owners and launcher.poll() is not None and not any(_process_alive(pid) for pid in owners):
+            if launcher.returncode != 0:
+                raise AssertionError(f"disinstallatore uscito con {launcher.returncode}; finestre: {dialogs}")
             return dialogs
         time.sleep(_POLL_S)
+    launcher.kill()
     raise AssertionError(f"disinstallazione interattiva non conclusa; finestre viste: {dialogs}")
 
 
@@ -147,21 +159,15 @@ def _window_pid(hwnd: int) -> int:
     return pid.value
 
 
-def _build_installer(iscc: Path, work: Path) -> Path:
+def _build_installer(iscc: Path, work: Path, defines: dict[str, str]) -> Path:
     packaging = work / "packaging"
     (packaging / "windows").mkdir(parents=True)
     shutil.copy(HERE / "stemforge.iss", packaging / "windows")
     app = packaging / "dist" / "StemForge"
-    (app / "_internal").mkdir(parents=True)
+    (app / FAKE_DEEP_FILE).parent.mkdir(parents=True)
     (app / wi.APP_EXE).write_bytes(b"MZ app finta: il collaudo riguarda l'installer")
-    (app / "_internal" / "dato.txt").write_text("dato", encoding="utf-8")
-    make_ico(HERE.parent / "icon.png", packaging / "build" / "icon.ico")
-    subprocess.run(
-        [str(iscc), "/Q", "/DAppVersion=0.0.0", f"/DDataDirName={FAKE_DATA_DIR}",
-         str(packaging / "windows" / "stemforge.iss")],
-        check=True, timeout=_COMPILE_TIMEOUT_S,
-    )
-    return work / "dist" / "StemForge-0.0.0-windows-x64-setup.exe"
+    (app / FAKE_DEEP_FILE).write_text("dato", encoding="utf-8")
+    return compile_installer(iscc, packaging, "0.0.0", {"DataDirName": FAKE_DATA_DIR, **defines})
 
 
 def _install(setup: Path, target: Path) -> None:
@@ -218,6 +224,35 @@ def _interactive_round(setup: Path, target: Path, data_dir: Path, answer: int) -
     return {"round": name, "dialogs": dialogs, "data_kept": kept}
 
 
+def _dir_of_length(base: Path, length: int) -> Path:
+    """Una cartella sotto `base` lunga esattamente `length` caratteri."""
+    padding = length - len(str(base / "StemForge")) - 1
+    if padding < 1:
+        raise ValueError(f"{base} è già più lunga di {length} caratteri")
+    return base / ("p" * padding) / "StemForge"
+
+
+def _long_path_round(iscc: Path, work: Path) -> dict:
+    """Con i percorsi lunghi di Windows spenti (simulati: il dev-box li ha
+    accesi) una cartella troppo lunga è rifiutata, quella al limite no."""
+    setup = _build_installer(iscc, work / "bl", {"AssumeLongPathsDisabled": "1"})
+    limit = 259 - 1 - len(FAKE_DEEP_FILE)
+    too_long = _dir_of_length(work, limit + 1)
+    code = subprocess.run([str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER",
+                           f"/DIR={too_long}"], timeout=_COMPILE_TIMEOUT_S).returncode
+    if code == 0 or wi.installed_dir() is not None or (too_long / wi.APP_EXE).exists():
+        raise AssertionError(f"cartella di {limit + 1} caratteri accettata (uscita {code})")
+    at_limit = _dir_of_length(work, limit)
+    _install(setup, at_limit)
+    if not (at_limit / FAKE_DEEP_FILE).is_file():
+        raise AssertionError("file profondo non installato nella cartella al limite")
+    command = wi.uninstall_command()
+    subprocess.run([*command, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True)
+    _drive_dialogs_absent(command)
+    return {"round": "percorso-lungo", "dialogs": [], "limit_chars": limit, "refused_exit_code": code,
+            "data_kept": None}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("report", type=Path)
@@ -232,12 +267,13 @@ def main() -> int:
     data_dir = Path(os.environ["LOCALAPPDATA"]) / FAKE_DATA_DIR
     rounds = []
     with tempfile.TemporaryDirectory(prefix="stemforge-prompt-") as tmp:
-        setup = _build_installer(args.iscc, Path(tmp) / "build")
+        setup = _build_installer(args.iscc, Path(tmp) / "build", {})
         target = Path(tmp) / "Programmi di prova àè" / "StemForge"
         try:
             rounds.append(_silent_round(setup, target, data_dir))
             rounds.append(_interactive_round(setup, target, data_dir, _IDNO))
             rounds.append(_interactive_round(setup, target, data_dir, _IDYES))
+            rounds.append(_long_path_round(args.iscc, Path(tmp)))
         finally:
             if wi.installed_dir() is not None:  # un giro fallito non lascia l'installazione di prova
                 command = wi.uninstall_command()

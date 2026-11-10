@@ -1,10 +1,11 @@
 ﻿; Installer Windows di StemForge (BUILD_SPEC §9.7) — Inno Setup 6.3+.
 ;
-;   python packaging\windows\make_ico.py
-;   iscc /DAppVersion=1.0.0 packaging\windows\stemforge.iss
+;   python packaging\windows\build_installer.py
 ;
-; Legge l'app da packaging\dist\StemForge (PyInstaller) e l'icona da
-; packaging\build\icon.ico; scrive dist\StemForge-<versione>-windows-x64-setup.exe.
+; che genera packaging\build\icon.ico e chiama ISCC con /DAppVersion e
+; /DLongestRelPath (percorso relativo più lungo dentro l'app, misurato).
+; Legge l'app da packaging\dist\StemForge (PyInstaller); scrive
+; dist\StemForge-<versione>-windows-x64-setup.exe.
 ;
 ; Scelte:
 ; - installazione PER UTENTE, senza diritti di amministratore: niente
@@ -18,9 +19,17 @@
 ;   log (~1 GB in %LOCALAPPDATA%\StemForge): lasciarli in silenzio sarebbe
 ;   un GB perso, cancellarli in silenzio un download da rifare. In modalità
 ;   silenziosa nessuno può rispondere, quindi i dati restano.
+; - percorsi lunghi: con i percorsi lunghi di Windows disattivati (il
+;   default) un file oltre 259 caratteri non si apre, e l'app installata
+;   in una cartella troppo profonda non caricherebbe le sue DLL. L'installer
+;   rifiuta quella cartella con un messaggio chiaro invece di lasciare
+;   un'app rotta; con i percorsi lunghi attivi la accetta.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
+#endif
+#ifndef LongestRelPath
+  #error Passa /DLongestRelPath=<n>: lo misura packaging\windows\build_installer.py
 #endif
 ; Solo per il collaudo della domanda di disinstallazione su una cartella
 ; finta (packaging\windows\check_uninstall_prompt.py): il "Sì" non deve
@@ -72,6 +81,8 @@ italian.DeleteFailed=Impossibile eliminare del tutto %1: puoi cancellarla a mano
 english.DeleteFailed=Could not fully delete %1: you can remove it by hand.
 italian.AudioFileType=File audio
 english.AudioFileType=Audio file
+italian.PathTooLong=La cartella scelta è troppo lunga:%n%n%1%n%nCon i percorsi lunghi di Windows disattivati StemForge non potrebbe avviarsi da lì. Scegli una cartella di al massimo %2 caratteri.
+english.PathTooLong=The selected folder is too long:%n%n%1%n%nWith Windows long paths disabled StemForge could not start from there. Choose a folder of at most %2 characters.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -125,6 +136,49 @@ Root: HKA; Subkey: "Software\Classes\.aif\OpenWithProgids"; ValueType: string; V
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  { MAX_PATH di Win32 (260) meno il terminatore }
+  ClassicMaxPath = 259;
+  LongestRelPath = {#LongestRelPath};
+
+function LongPathsEnabled(): Boolean;
+var
+  Enabled: Cardinal;
+begin
+#ifdef AssumeLongPathsDisabled
+  { solo collaudo (check_uninstall_prompt.py): il dev-box li ha attivi }
+  Enabled := 0;
+#else
+  if not RegQueryDWordValue(HKLM, 'SYSTEM\CurrentControlSet\Control\FileSystem', 'LongPathsEnabled', Enabled) then
+    Enabled := 0;
+#endif
+  Result := Enabled = 1;
+end;
+
+function MaxInstallDirLength(): Integer;
+begin
+  { cartella + separatore + percorso interno più lungo entro MAX_PATH }
+  Result := ClassicMaxPath - 1 - LongestRelPath;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dir: String;
+begin
+  Result := True;
+  if CurPageID <> wpSelectDir then
+    Exit;
+  Dir := RemoveBackslashUnlessRoot(WizardDirValue());
+  if (Length(Dir) > MaxInstallDirLength()) and not LongPathsEnabled() then
+  begin
+    { in silenzio (/DIR= troppo lunga) il messaggio va nel log e Setup esce con errore }
+    Log(Format('Cartella troppo lunga: %d caratteri, massimo %d', [Length(Dir), MaxInstallDirLength()]));
+    SuppressibleMsgBox(FmtMessage(CustomMessage('PathTooLong'), [Dir, IntToStr(MaxInstallDirLength())]),
+                       mbError, MB_OK, IDOK);
+    Result := False;
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
