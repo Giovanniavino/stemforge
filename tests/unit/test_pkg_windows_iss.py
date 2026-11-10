@@ -86,15 +86,32 @@ def test_open_with_covers_every_format_the_app_reads():
     assert open_with == set(SUPPORTED_SUFFIXES)
 
 
+def _extension_entries() -> list[dict[str, str]]:
+    return [e for e in _registry() if re.fullmatch(r"Software\\Classes\\\.\w+.*", e["Subkey"])]
+
+
 def test_never_steals_the_default_association():
-    for entry in _registry():
+    for entry in _extension_entries():
         subkey = entry["Subkey"]
-        if re.fullmatch(r"Software\\Classes\\\.\w+.*", subkey):
-            # sotto la chiave dell'estensione solo OpenWithProgids, e solo un nostro valore
-            assert subkey.endswith(r"\OpenWithProgids"), subkey
-            assert entry["ValueName"] == "{#ProgId}" and entry["ValueType"] == "none"
-            # la chiave .ext non è nostra: si toglie il valore, e OpenWithProgids solo se vuota
-            assert entry["Flags"].split() == ["uninsdeletevalue", "uninsdeletekeyifempty"], entry["Flags"]
+        if re.fullmatch(r"Software\\Classes\\\.\w+", subkey):
+            # la chiave .ext: nessun valore scritto (il predefinito è l'associazione), via solo se vuota
+            assert set(entry) == {"Root", "Subkey", "Flags"} and entry["Flags"] == "uninsdeletekeyifempty", entry
+            continue
+        # sotto l'estensione solo OpenWithProgids, e solo un nostro valore
+        assert subkey.endswith(r"\OpenWithProgids"), subkey
+        # "none" in Inno non crea il valore: serve una stringa vuota (provato con ISCC 6.7.2)
+        assert (entry["ValueName"], entry["ValueType"], entry["ValueData"]) == ("{#ProgId}", "string", "")
+        # OpenWithProgids non è nostra: si toglie il valore, e la chiave solo se vuota
+        assert entry["Flags"].split() == ["uninsdeletevalue", "uninsdeletekeyifempty"], entry["Flags"]
+
+
+def test_extension_key_is_listed_before_its_open_with_progids():
+    """Il disinstallatore ripercorre le voci al contrario: la chiave .ext va
+    valutata DOPO aver tolto il nostro valore, altrimenti non è mai vuota."""
+    subkeys = [e["Subkey"] for e in _extension_entries()]
+    for ext in SUPPORTED_SUFFIXES:
+        key = rf"Software\Classes\{ext}"
+        assert subkeys.index(key) < subkeys.index(key + r"\OpenWithProgids"), ext
 
 
 def test_registry_is_removed_on_uninstall():

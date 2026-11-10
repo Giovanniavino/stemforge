@@ -98,16 +98,28 @@ Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; Val
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".m4a"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".aiff"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".aif"; ValueData: ""
-; un valore vuoto sotto OpenWithProgids aggiunge l'app al menu e basta;
-; si toglie solo il NOSTRO valore, e OpenWithProgids solo se è rimasta
-; vuota (cioè se l'avevamo creata noi); la chiave dell'estensione resta
-Root: HKA; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKA; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKA; Subkey: "Software\Classes\.flac\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKA; Subkey: "Software\Classes\.ogg\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKA; Subkey: "Software\Classes\.m4a\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKA; Subkey: "Software\Classes\.aiff\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
-Root: HKA; Subkey: "Software\Classes\.aif\OpenWithProgids"; ValueType: none; ValueName: "{#ProgId}"; Flags: uninsdeletevalue uninsdeletekeyifempty
+; un valore stringa vuoto sotto OpenWithProgids aggiunge l'app al menu e
+; basta. NON "ValueType: none": Inno con none crea la chiave ma nessun
+; valore, e l'app non compare nel menu (provato con ISCC 6.7.2).
+; Si toglie solo il NOSTRO valore, OpenWithProgids solo se è rimasta vuota
+; e la chiave dell'estensione solo se è vuota anch'essa (cioè se le aveva
+; create l'installazione su un profilo nuovo). La riga della chiave
+; .ext viene PRIMA di quella di OpenWithProgids: il disinstallatore
+; ripercorre le voci al contrario, quindi la svuota prima di valutarla.
+Root: HKA; Subkey: "Software\Classes\.wav"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.mp3"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.flac"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.flac\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ogg"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ogg\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.m4a"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.m4a\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aiff"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aiff\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aif"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aif\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent

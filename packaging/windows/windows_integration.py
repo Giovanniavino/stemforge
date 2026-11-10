@@ -93,11 +93,15 @@ def uninstall_command() -> list[str]:
     return [command.strip('"')]
 
 
-def default_associations() -> dict[str, dict[str, str | None]]:
-    """Chi apre ogni estensione col doppio click: non deve cambiare mai."""
+def default_associations() -> dict[str, dict[str, str | bool | None]]:
+    """Chi apre ogni estensione col doppio click: non deve cambiare mai.
+
+    Conta anche se la chiave HKCU dell'estensione esiste: su un profilo
+    nuovo la crea l'installazione e la disinstallazione deve toglierla."""
     explorer = r"Software\Microsoft\Windows\CurrentVersion\Explorer\FileExts"
     return {
         ext: {
+            "hkcu_key": _key_exists(rf"{CLASSES}\{ext}"),
             "hkcu": _value(winreg.HKEY_CURRENT_USER, rf"{CLASSES}\{ext}"),
             "hkcr": _value(winreg.HKEY_CLASSES_ROOT, ext),
             "user_choice": _value(winreg.HKEY_CURRENT_USER, rf"{explorer}\{ext}\UserChoice", "ProgId"),

@@ -63,10 +63,17 @@ def _uninstall() -> None:
     raise AssertionError("disinstallazione non conclusa entro il tempo massimo")
 
 
+def _choices(associations: dict[str, dict]) -> dict[str, dict]:
+    return {ext: {k: v for k, v in values.items() if k != "hkcu_key"} for ext, values in associations.items()}
+
+
 def _check_installed(app_dir: Path, associations: dict[str, dict[str, str | None]]) -> list[str]:
     exe = app_dir / wi.APP_EXE
     lines = [wi.check_start_menu(exe), wi.check_no_desktop_icon(), wi.check_open_with(exe)]
-    after = wi.default_associations()
+    # da installata la chiave .ext in HKCU può esserci in più (OpenWithProgids):
+    # conta che il predefinito e la UserChoice non cambino
+    after = _choices(wi.default_associations())
+    associations = _choices(associations)
     if after != associations:
         raise AssertionError(f"associazioni predefinite cambiate:\nprima {associations}\ndopo  {after}")
     lines.append("associazioni predefinite invariate")
@@ -78,8 +85,9 @@ def _check_removed(app_dir: Path, associations: dict, data_before: tuple[int, in
     if leftovers:
         raise AssertionError(f"file rimasti dopo la disinstallazione: {leftovers[:20]}")
     lines = [wi.check_integration_removed()]
-    if wi.default_associations() != associations:
-        raise AssertionError("associazioni predefinite cambiate dalla disinstallazione")
+    after = wi.default_associations()
+    if after != associations:
+        raise AssertionError(f"registro delle estensioni cambiato dalla disinstallazione:\nprima {associations}\ndopo  {after}")
     data_after = wi.models_footprint()
     if data_before is not None and data_after != data_before:
         raise AssertionError(f"modelli dell'utente toccati: prima {data_before}, dopo {data_after}")
