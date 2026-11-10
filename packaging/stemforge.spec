@@ -14,6 +14,8 @@ Variabili d'ambiente (le imposta la CI, §9.6; senza, valgono i default):
 - STEMFORGE_MACOS_MIN     macOS: sovrascrive LSMinimumSystemVersion.
 - STEMFORGE_CODESIGN_IDENTITY  macOS: "-" = firma ad-hoc (default, la
   stessa provata sul campo); la Developer ID la applica notarize.sh.
+  PyInstaller tratta "-" come un'identita' vera e accende l'hardened
+  runtime anche in ad-hoc: per questo entitlements.plist serve sempre.
 - STEMFORGE_REQUIRE_FFMPEG=1  la build FALLISCE se manca il FFmpeg del
   profilo (la release lo imposta); senza, avvisa e prosegue: l'app
   funziona ma non legge m4a/aac/alac.
@@ -52,7 +54,7 @@ PROFILES = {
 }
 _X64_MACHINES = ("x86_64", "amd64")
 _TRUTHY = ("1", "true", "yes")
-AUDIO_EXTENSIONS = ["wav", "mp3", "flac", "ogg", "m4a", "aiff", "aif"]
+AUDIO_EXTENSIONS = ["wav", "mp3", "flac", "ogg", "m4a", "aac", "aiff", "aif"]
 
 
 def _fail(message):
@@ -121,12 +123,15 @@ def _icon():
     """icon.png convertita da Pillow in .icns/.ico; Linux non ha icona nell'eseguibile."""
     if sys.platform not in ("darwin", "win32"):
         return None
+    icon = SPEC_DIR / "icon.png"
+    if not icon.is_file():
+        _fail(f"icona mancante: {icon} (la ridisegna packaging/make_icon.py)")
     try:
         import PIL  # noqa: F401
     except ImportError:
         _fail("serve Pillow per convertire icon.png in .icns/.ico: "
               "pip install -r packaging/requirements-build.txt")
-    return str(SPEC_DIR / "icon.png")
+    return str(icon)
 
 
 def _windows_version_file():
