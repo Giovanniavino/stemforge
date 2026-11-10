@@ -1,17 +1,18 @@
 #!/bin/sh
 # ============================================================================
-# Aggiornamento rapido di StemForge (doppio click).
+# Aggiornamento di StemForge (doppio click). BUILD_SPEC §9.5.
 #
 # Riusa l'ambiente creato dall'installazione completa: NON riscarica
-# Python ne' le dipendenze (~1 GB), ricostruisce solo l'app con i
-# sorgenti aggiornati e la sostituisce in /Applications. Pochi minuti.
+# Python. Porta l'ambiente al lock di questa versione (pip scarica solo
+# i pacchetti nuovi o cambiati, ognuno verificato con l'hash SHA-256),
+# ricostruisce l'app con i sorgenti aggiornati e la sostituisce in
+# /Applications. Di solito pochi minuti.
 #
 # Se l'installazione completa non e' mai stata fatta su questo Mac,
 # questo script si ferma e ti dice di usare "Installa StemForge.command".
 # ============================================================================
 set -eu
 
-say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 die() {
     printf '\n\033[31mERRORE: %s\033[0m\n\n' "$1"
     printf 'Premi Invio per chiudere...'
@@ -20,9 +21,8 @@ die() {
 }
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "$0")"
 cd "$SCRIPT_DIR"
-
-BUILD_ENV="$HOME/Library/Application Support/StemForge/build-env"
 
 # Stessi due layout dell'installer: pacchetto distribuito o repo.
 if [ -f "$SCRIPT_DIR/StemForge/requirements-macos-x86_64.lock" ]; then
@@ -33,42 +33,44 @@ else
     die "sorgenti di StemForge non trovati accanto a questo script.
 Estrai TUTTO lo zip e rilancia."
 fi
+[ -f "$SRC_DIR/packaging/installer/comune.sh" ] \
+    || die "pacchetto incompleto (manca comune.sh): riscarica lo zip ed estrailo TUTTO."
+# shellcheck source=comune.sh
+. "$SRC_DIR/packaging/installer/comune.sh"
 
 if [ "$(uname -m)" = "arm64" ]; then
     if arch -x86_64 /usr/bin/true 2>/dev/null; then
-        exec arch -x86_64 /bin/sh "$0" "$@"
+        exec arch -x86_64 /bin/sh "$SCRIPT_PATH" "$@"
     else
         die "serve Rosetta 2: esegui prima 'softwareupdate --install-rosetta'."
     fi
 fi
 
 say "Controllo l'ambiente esistente"
-PYBIN="$BUILD_ENV/bin/python"
 [ -x "$PYBIN" ] || die "ambiente di costruzione non trovato: su questo Mac
 serve prima l'installazione completa (Installa StemForge.command)."
-"$PYBIN" -c "import torch, PySide6" 2>/dev/null \
-    || die "l'ambiente esistente e' incompleto: rifai l'installazione
+# un ambiente di prima del passaggio a Catalina puo' avere un altro Python
+"$PYBIN" -c 'import sys; sys.exit(sys.version_info[:2] != (3, 11))' \
+    || die "l'ambiente esistente non usa Python 3.11: rifai l'installazione
 completa con Installa StemForge.command."
-echo "    ambiente ok, niente da riscaricare."
 
-say "Aggiorno i sorgenti di StemForge"
-"$PYBIN" -m pip install --quiet "$SRC_DIR" --no-deps --no-build-isolation --force-reinstall \
-    || die "aggiornamento dei sorgenti non riuscito: manda le righe qui sopra a chi ti ha dato il pacchetto."
+say "Allineo le dipendenze a questa versione (scarico solo cio' che manca)"
+install_locked_deps
+"$PYBIN" -c "import torch, PySide6" \
+    || die "l'ambiente e' incompleto anche dopo l'allineamento: rifai
+l'installazione completa con Installa StemForge.command."
+echo "    ambiente ok."
 
 say "Ricostruisco l'app (qualche minuto)"
-cd "$SRC_DIR/packaging"
-rm -rf build dist
-"$BUILD_ENV/bin/pyinstaller" stemforge.spec --noconfirm --log-level ERROR \
-    || die "ricostruzione non riuscita: manda le righe qui sopra a chi ti ha dato il pacchetto."
-[ -d "dist/StemForge.app" ] || die "l'app non risulta costruita."
+prepare_ffmpeg
+build_app
 
 say "Sostituisco StemForge in /Applications"
-rm -rf "/Applications/StemForge.app"
-ditto "dist/StemForge.app" "/Applications/StemForge.app" || die "copia in /Applications non riuscita."
-rm -rf build dist
+copy_to_applications
 
 printf '\n\033[32m\033[1mAggiornamento completato.\033[0m\n'
-printf 'I modelli gia'\'' scaricati e la calibrazione restano al loro posto.\n\n'
+ffmpeg_notice
+printf '\nI modelli gia'\'' scaricati e la calibrazione restano al loro posto.\n\n'
 printf 'Premi Invio per aprire StemForge...'
 read -r _
-open "/Applications/StemForge.app"
+open "$APP_DEST"
