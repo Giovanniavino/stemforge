@@ -50,8 +50,9 @@ RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 # Python puro pubblicato solo come sorgente (allineato con
 # SDIST_ALLOWLIST di packaging/gen_locks.py): si installa senza compilatore.
 SDIST_ONLY="antlr4-python3-runtime,demucs,dora-search"
-# torch "+cpu" esiste solo sull'indice di PyTorch; gli hash del lock
-# impediscono che da qui arrivi un file diverso da quello fissato.
+# torch "+cpu" esiste solo sull'indice di PyTorch: il lock lo dichiara
+# con una riga --extra-index-url (packaging/gen_locks.py), e gli hash
+# impediscono che da li' arrivi un file diverso da quello fissato.
 TORCH_CPU_INDEX="https://download.pytorch.org/whl/cpu"
 
 die() { echo "build_appimage.sh: ERRORE: $*" >&2; exit 1; }
@@ -73,6 +74,8 @@ check_lock_is_cpu_only() {
         die "il lock $LOCK contiene pacchetti CUDA (nvidia-*/triton): il profilo linux-x64 e' solo CPU"
     fi
     grep -Eq '^torch==[^ ]*\+cpu' "$LOCK" || die "nel lock $LOCK torch non e' la build +cpu"
+    grep -Fqx -- "--extra-index-url $TORCH_CPU_INDEX" "$LOCK" \
+        || die "il lock $LOCK non dichiara l'indice CPU di PyTorch ($TORCH_CPU_INDEX)"
 }
 
 # Le librerie X11 che Qt 6.7 carica e che una distribuzione desktop non
@@ -96,8 +99,7 @@ make_venv() {
     rm -rf "$VENV"
     "$PYTHON" -m venv "$VENV"
     "$VENV/bin/python" -m pip install --no-input --disable-pip-version-check \
-        --require-hashes --only-binary :all: --no-binary "$SDIST_ONLY" \
-        --extra-index-url "$TORCH_CPU_INDEX" -r "$LOCK"
+        --require-hashes --only-binary :all: --no-binary "$SDIST_ONLY" -r "$LOCK"
     "$VENV/bin/python" -m pip install --no-input --disable-pip-version-check \
         --only-binary :all: -r "$REPO/packaging/requirements-build.txt"
     if "$VENV/bin/python" -c "import av" 2>/dev/null; then
