@@ -32,6 +32,9 @@ CF_HDROP = 15
 _OPEN_ATTEMPTS = 20
 _OPEN_RETRY_S = 0.05
 _CHILD_TIMEOUT_S = 60
+_PROBE_ATTEMPTS = 3
+# controllo negativo: un URL non locale, per cui Qt non deve offrire CF_HDROP
+_REMOTE_FLAG = "--remote-urls"
 _NAME_BUFFER = 256
 _LONG_SEGMENT = "cartella con un nome lungo per superare MAX_PATH àèìòù"
 
@@ -96,7 +99,13 @@ def probe(paths: list[str]) -> dict:
     from stemforge.ui.drag_export import build_mime_data
 
     app = QGuiApplication(["probe", "-platform", "windows"])
-    mime = build_mime_data([Path(p) for p in paths])
+    if paths[:1] == [_REMOTE_FLAG]:
+        from PySide6.QtCore import QMimeData, QUrl
+
+        mime = QMimeData()
+        mime.setUrls([QUrl(url) for url in paths[1:]])
+    else:
+        mime = build_mime_data([Path(p) for p in paths])
     report = {"platform": app.platformName(), "mime_formats": mime.formats(),
               "mime_urls": [url.toString() for url in mime.urls()]}
     clipboard = app.clipboard()
@@ -109,6 +118,9 @@ def probe(paths: list[str]) -> dict:
         report["hdrop"] = _hdrop_files(ctypes, user32, shell32)
     finally:
         user32.CloseClipboard()
+    # gli appunti sono condivisi: se un altro processo li ha riscritti nel
+    # frattempo, quello letto non è il nostro MIME e il giro va ripetuto
+    report["owned"] = clipboard.ownsClipboard()
     # non lasciare i nostri file negli appunti dell'utente
     clipboard.clear()
     app.processEvents()
@@ -134,11 +146,15 @@ def _run_probe(files: list[str]) -> dict:
     env["QT_QPA_PLATFORM"] = "windows"
     env["PYTHONPATH"] = os.pathsep.join(
         [str(Path(__file__).resolve().parents[2] / "src"), env.get("PYTHONPATH", "")])
-    done = subprocess.run(
-        [sys.executable, __file__, *files], capture_output=True, text=True,
-        encoding="utf-8", env=env, timeout=_CHILD_TIMEOUT_S, check=False)
-    assert done.returncode == 0, done.stderr
-    return json.loads(done.stdout.strip().splitlines()[-1])
+    for _ in range(_PROBE_ATTEMPTS):
+        done = subprocess.run(
+            [sys.executable, __file__, *files], capture_output=True, text=True,
+            encoding="utf-8", env=env, timeout=_CHILD_TIMEOUT_S, check=False)
+        assert done.returncode == 0, done.stderr
+        report = json.loads(done.stdout.strip().splitlines()[-1])
+        if report["owned"]:
+            return report
+    raise AssertionError("appunti riscritti da un altro processo a ogni tentativo")
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="formati di appunti nativi di Windows")
@@ -163,6 +179,17 @@ def test_qt_puts_cf_hdrop_with_exact_paths_on_windows(tmp_path: Path):
     # i primi due sono corti: arrivano identici, unicode e spazi compresi
     assert hdrop[:2] == files[:2]
     assert len(files[2]) >= 260, "il terzo file deve davvero superare MAX_PATH"
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="formati di appunti nativi di Windows")
+def test_probe_sees_when_cf_hdrop_is_missing():
+    # la sonda deve saper fallire: con un URL remoto Qt offre solo i formati
+    # UniformResourceLocator, e la lettura con user32 lo deve vedere
+    report = _run_probe([_REMOTE_FLAG, "https://example.invalid/stem/vocals.wav"])
+    names = set(report["formats"].values())
+    assert str(CF_HDROP) not in report["formats"], report["formats"]
+    assert report["hdrop"] == []
+    assert "UniformResourceLocatorW" in names, report["formats"]
 
 
 if __name__ == "__main__":
