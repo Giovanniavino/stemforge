@@ -93,7 +93,8 @@ def test_never_steals_the_default_association():
             # sotto la chiave dell'estensione solo OpenWithProgids, e solo un nostro valore
             assert subkey.endswith(r"\OpenWithProgids"), subkey
             assert entry["ValueName"] == "{#ProgId}" and entry["ValueType"] == "none"
-            assert entry["Flags"] == "uninsdeletevalue", "la chiave .ext non è nostra: si toglie solo il valore"
+            # la chiave .ext non è nostra: si toglie il valore, e OpenWithProgids solo se vuota
+            assert entry["Flags"].split() == ["uninsdeletevalue", "uninsdeletekeyifempty"], entry["Flags"]
 
 
 def test_registry_is_removed_on_uninstall():
