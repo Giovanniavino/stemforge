@@ -141,6 +141,10 @@ def test_encode_fixture_rejects_unknown_codec_and_shape(tmp_path):
         ("Stream #0:0: Video: h264, yuv420p\nStream map '0:a:0' matches no streams.",
          "non contiene una traccia audio"),
         ("file:x.m4a: Invalid data found when processing input", "danneggiato"),
+        # il nome del file finisce in stderr: "Encrypted" nel titolo non e' DRM
+        ("Input #0, mov, from 'file:C:/Encrypted (drms / 0x1) enca.m4a':\n"
+         "Stream #0:0: Audio: aac (mp4a / 0x6134706D)\nError while decoding",
+         "danneggiato"),
     ],
 )
 def test_user_error_messages(stderr, expected):

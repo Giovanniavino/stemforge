@@ -42,9 +42,12 @@ _STDERR_TAIL = 600
 FIXTURE_CODECS = frozenset({"aac", "alac", "flac", "pcm_s16le", "pcm_s24le"})
 
 # Formati di campione con cui i negozi cifrano l'audio: FairPlay (iTunes
-# .m4p: drms/drmi), CENC (enca), Audible (aavd). FFmpeg li vede ma non li
-# decodifica, e senza questo controllo l'utente leggerebbe "file corrotto".
-_DRM_RE = re.compile(r"\((?:drms|drmi|enca|aavd) /|encrypt|activation bytes", re.I)
+# .m4p: drms/drmi), CENC (enca), Audible (aavd). FFmpeg riconosce il codec
+# sotto la cifratura e "decodifica" lo stesso: ne esce rumore o un errore
+# generico, quindi si decide dal tag del flusso, non dall'esito. Si guarda
+# solo il tag "(xxxx / 0x...)" perche' stderr contiene anche il nome del
+# file, e un brano chiamato "Encrypted" non e' protetto.
+_DRM_RE = re.compile(r"Audio: .*\((?:drms|drmi|enca|aavd) / 0x[0-9A-Fa-f]+\)")
 _AUDIO_STREAM_RE = re.compile(r"Stream #\d+:\d+\S*: Audio:")
 _DURATION_RE = re.compile(r"Duration: (\d+):(\d{2}):(\d{2}(?:\.\d+)?)")
 
@@ -233,6 +236,8 @@ def _stream_format(path: Path) -> tuple[int, int]:
         code, out, err = _run(args, PROBE_TIMEOUT_S)
     except subprocess.TimeoutExpired as exc:
         raise DecodeError(f"{Path(path).name}: lettura bloccata, riprova.") from exc
+    if _DRM_RE.search(err):
+        raise _user_error(path, err)
     header = _parse_wav_header(bytes(out[:4096])) if code == 0 else None
     if header is None or header[0] == 0 or header[1] == 0:
         if code == 0:
@@ -253,7 +258,7 @@ def decode(path: Path) -> tuple[np.ndarray, int]:
     if not Path(path).is_file():
         raise DecodeError(f"{Path(path).name} non esiste o non è un file.")
     channels, samplerate = _stream_format(path)
-    args =["-i", _file_arg(path), "-map", "0:a:0", "-vn", "-sn", "-dn",
+    args = ["-i", _file_arg(path), "-map", "0:a:0", "-vn", "-sn", "-dn",
             "-ac", str(channels), "-ar", str(samplerate),
             "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"]
     try:
