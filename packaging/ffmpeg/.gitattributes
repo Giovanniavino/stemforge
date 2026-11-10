@@ -1,2 +1,5 @@
 # gli script girano in bash anche se il checkout Windows converte in CRLF
 *.sh text eol=lf
+# letti dagli script: niente CR
+VERSION text eol=lf
+SOURCE_SHA256 text eol=lf

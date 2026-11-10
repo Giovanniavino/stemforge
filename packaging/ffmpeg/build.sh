@@ -57,7 +57,9 @@ COMMON_FLAGS=(
   --enable-decoder='aac,aac_latm,alac,mp3,mp3float,vorbis,opus,flac,pcm_*'
   --enable-parser=aac,aac_latm,mpegaudio,vorbis,opus,flac
   --enable-encoder=pcm_f32le,pcm_s16le,pcm_s24le,aac,alac,flac
-  --enable-muxer=wav,ipod,mp4,caf,flac,f32le
+  # "-f f32le" in configure si chiama pcm_f32le: col nome corto configure
+  # tace e il muxer resta spento (lo scopre REQUIRED_CONFIG)
+  --enable-muxer=wav,ipod,mp4,caf,flac,pcm_f32le
   --enable-filter=aresample,aformat,anull
 )
 
@@ -78,7 +80,7 @@ REQUIRED_CONFIG=(
   CONFIG_PCM_F32LE_ENCODER CONFIG_PCM_S16LE_ENCODER CONFIG_PCM_S24LE_ENCODER
   CONFIG_AAC_ENCODER CONFIG_ALAC_ENCODER CONFIG_FLAC_ENCODER
   CONFIG_WAV_MUXER CONFIG_IPOD_MUXER CONFIG_MP4_MUXER CONFIG_CAF_MUXER
-  CONFIG_FLAC_MUXER CONFIG_F32LE_MUXER
+  CONFIG_FLAC_MUXER CONFIG_PCM_F32LE_MUXER
   CONFIG_ARESAMPLE_FILTER CONFIG_AFORMAT_FILTER CONFIG_ANULL_FILTER
 )
 FORBIDDEN_CONFIG=(CONFIG_GPL CONFIG_NONFREE CONFIG_VERSION3)
