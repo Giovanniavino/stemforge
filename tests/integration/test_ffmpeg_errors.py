@@ -93,3 +93,24 @@ def test_name_that_looks_like_a_protocol_is_a_file(tmp_path, monkeypatch):
     _aac_m4a(tmp_path, "pipe:1.m4a")
     decoded, rate = ffmpeg.decode(Path("pipe:1.m4a"))
     assert rate == SAMPLERATE and decoded.shape[1] == 2
+
+
+def test_decode_timeout_is_a_clear_error_and_kills_ffmpeg(tmp_path, monkeypatch):
+    # un disco bloccato non deve appendere l'app: scaduto il tempo, ffmpeg
+    # viene ucciso e l'utente legge cosa e' successo
+    long = tmp_path / "lungo.flac"
+    t = np.arange(SAMPLERATE * 120) / SAMPLERATE
+    audio = np.stack([0.3 * np.sin(2 * np.pi * 330.0 * t)] * 2).astype(np.float32)
+    ffmpeg.encode_fixture(audio, SAMPLERATE, long, "flac")
+    started: list = []
+    real_popen = ffmpeg.subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        started.append(real_popen(*args, **kwargs))
+        return started[-1]
+
+    monkeypatch.setattr(ffmpeg.subprocess, "Popen", recording_popen)
+    monkeypatch.setattr(ffmpeg, "DECODE_TIMEOUT_S", 0.01)
+    assert "non è finita" in _decode_error(long)
+    assert len(started) == 2  # lettura del formato, poi la decodifica
+    assert all(proc.poll() is not None for proc in started)
