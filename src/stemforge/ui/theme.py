@@ -21,6 +21,8 @@ from PySide6.QtCore import QSettings, Qt
 from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
 
+from stemforge.ui.indicator_style import IndicatorColors, IndicatorStyle
+
 
 @dataclass(frozen=True)
 class Palette:
@@ -196,7 +198,7 @@ QFrame#dropzone {
     border: 2px dashed $indicator;
     border-radius: 12px;
 }
-QFrame#dropzone QLabel#error { background-color: $surface; }
+QFrame#dropzone QLabel { background-color: transparent; }
 QFrame#dropzone[dragActive="true"] { border: 3px solid $focus; }
 QToolButton { border: 2px solid transparent; border-radius: 4px; font-weight: bold; padding: 2px; }
 QToolButton:focus { border-color: $focus; }
@@ -234,8 +236,42 @@ def qt_palette(p: Palette) -> QPalette:
     return palette
 
 
+def indicator_colors(p: Palette) -> IndicatorColors:
+    """Le caselle di spunta: coppie già in CONTRAST_PAIRS (border su
+    sfondo e superficie, on_accent su accent, accent su sfondo)."""
+    return IndicatorColors(
+        border=p.border, fill=p.surface, accent=p.accent, mark=p.on_accent,
+        disabled=p.text_dim,
+    )
+
+
 def palette_is_dark(palette: QPalette) -> bool:
     return palette.color(QPalette.ColorRole.Window).lightness() < _DARK_LIGHTNESS
+
+
+def style_hints_dark(app: QApplication) -> bool | None:
+    """Qt >= 6.5 sa dire il tema del sistema; None se non lo sa (6.4,
+    o un desktop Linux che non lo dichiara)."""
+    scheme_getter = getattr(app.styleHints(), "colorScheme", None)
+    if scheme_getter is None:
+        return None
+    scheme = scheme_getter()
+    if scheme == Qt.ColorScheme.Dark:
+        return True
+    if scheme == Qt.ColorScheme.Light:
+        return False
+    return None
+
+
+def windows_apps_dark() -> bool | None:
+    """Qt 6.4 su Windows non scurisce la palette dei widget: la palette
+    direbbe sempre "chiaro", il registro no. None fuori da Windows."""
+    if sys.platform != "win32":
+        return None
+    light = QSettings(_WIN_PERSONALIZE, QSettings.Format.NativeFormat).value(
+        "AppsUseLightTheme"
+    )
+    return None if light is None else str(light) == "0"
 
 
 def system_prefers_dark(app: QApplication) -> bool:
@@ -246,21 +282,11 @@ def system_prefers_dark(app: QApplication) -> bool:
     luminosità della palette di sistema, che su macOS e sui desktop
     Linux segue l'aspetto scelto dall'utente.
     """
-    scheme_getter = getattr(app.styleHints(), "colorScheme", None)
-    if scheme_getter is not None:
-        scheme = scheme_getter()
-        if scheme == Qt.ColorScheme.Dark:
-            return True
-        if scheme == Qt.ColorScheme.Light:
-            return False
-    if sys.platform == "win32":
-        # Qt 6.4 su Windows non scurisce la palette dei widget: la
-        # palette direbbe sempre "chiaro", il registro no
-        light = QSettings(_WIN_PERSONALIZE, QSettings.Format.NativeFormat).value(
-            "AppsUseLightTheme"
-        )
-        if light is not None:
-            return str(light) == "0"
+    verdict = style_hints_dark(app)
+    if verdict is None:
+        verdict = windows_apps_dark()
+    if verdict is not None:
+        return verdict
     cached = app.property(_SYSTEM_DARK_PROPERTY)
     if isinstance(cached, bool):
         return cached
@@ -288,6 +314,7 @@ def apply_theme(
         # la palette di sistema va letta PRIMA di sovrascriverla con la nostra
         app.setProperty(_SYSTEM_DARK_PROPERTY, palette_is_dark(app.palette()))
     chosen = palette or (DARK if system_prefers_dark(app) else LIGHT)
+    app.setStyle(IndicatorStyle(indicator_colors(chosen)))
     app.setPalette(qt_palette(chosen))
     app.setStyleSheet(stylesheet(chosen, base_point_size(app) * text_scale))
     _watch_system_scheme(app)
