@@ -13,7 +13,7 @@ file per ogni tipo di computer. Scegli la riga che corrisponde al tuo:
 | Mac con chip Apple (M1, M2, M3, M4…), macOS 11 Big Sur o successivo | `StemForge-<versione>-macos-arm64.dmg` | GPU Apple, dopo un controllo di correttezza |
 | Mac con processore Intel, macOS 10.15 Catalina o successivo | `StemForge-<versione>-macos-x86_64.dmg` | solo CPU |
 | PC con Windows 10 (versione 1809 o successiva) o Windows 11, 64 bit | `StemForge-<versione>-windows-x64-setup.exe` | solo CPU |
-| PC con Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 o successive) | `StemForge-<versione>-linux-x64.AppImage` | solo CPU |
+| PC con Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 o successive) | `StemForge-<versione>-linux-x86_64.AppImage` | solo CPU |
 
 **Non sai che Mac hai?** Menu  → **Informazioni su questo Mac**: se vedi
 "Chip Apple M…" è Apple Silicon, se vedi "Processore Intel…" è Intel. La
@@ -95,8 +95,8 @@ senza cambiare il programma che li apre di solito.
 ### Linux (AppImage)
 
 ```bash
-chmod +x StemForge-<versione>-linux-x64.AppImage
-./StemForge-<versione>-linux-x64.AppImage
+chmod +x StemForge-<versione>-linux-x86_64.AppImage
+./StemForge-<versione>-linux-x86_64.AppImage
 ```
 
 Oppure: click destro sul file → Proprietà → Permessi → "Consenti
@@ -181,7 +181,7 @@ comunemente"), apri l'elenco dei download e scegli **Mantieni** →
 - Controlla che sia eseguibile: `chmod +x StemForge-*.AppImage`.
 - Se l'errore parla di **FUSE**, installa il pacchetto FUSE della tua
   distribuzione, oppure avvia l'AppImage senza FUSE:
-  `./StemForge-<versione>-linux-x64.AppImage --appimage-extract-and-run`.
+  `./StemForge-<versione>-linux-x86_64.AppImage --appimage-extract-and-run`.
 
 ## Controllare lo SHA-256
 

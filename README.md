@@ -50,7 +50,7 @@ contains one file per kind of computer. Pick the row that matches yours:
 | Mac with Apple chip (M1, M2, M3, M4…), macOS 11 Big Sur or later | `StemForge-<version>-macos-arm64.dmg` | Apple GPU, after a correctness check |
 | Mac with Intel processor, macOS 10.15 Catalina or later | `StemForge-<version>-macos-x86_64.dmg` | CPU only |
 | PC with Windows 10 (1809 or later) or Windows 11, 64-bit | `StemForge-<version>-windows-x64-setup.exe` | CPU only |
-| PC with Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 or later) | `StemForge-<version>-linux-x64.AppImage` | CPU only |
+| PC with Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 or later) | `StemForge-<version>-linux-x86_64.AppImage` | CPU only |
 
 Not sure which Mac you have? Apple menu  → **About This Mac**: "Chip Apple
 M…" means Apple Silicon, "Processor Intel…" means Intel. The Intel build
@@ -88,11 +88,14 @@ The first time, macOS will warn you that the developer can't be verified:
 see [The app won't open](#the-app-wont-open).
 
 **Mac mini and other old Intel Macs (alternative)** — the
-`StemForge-Installer.zip` package builds the app directly on your Mac.
-Unzip it, double-click **"Installa StemForge.command"** and follow the
-Terminal. It needs an internet connection during installation (it
-downloads the official Python and the libraries, each verified by
-SHA-256).
+`StemForge-Installer.zip` package builds the app directly on your Mac; it
+is the route that has run on a 2012 Mac mini for months, and it stays
+until the Intel DMG has been checked on that machine. Unzip it,
+double-click **"Installa StemForge.command"** and follow the Terminal
+(the scripts speak Italian). It needs an internet connection during
+installation: it downloads the official Python and the libraries, each
+verified by SHA-256. **"Aggiorna StemForge.command"** updates an
+installation made this way.
 
 **Windows** — run `StemForge-<version>-windows-x64-setup.exe`. No
 administrator rights are needed (the installer offers "install for all
@@ -103,8 +106,8 @@ left alone.
 **Linux** — make the file executable and run it:
 
 ```bash
-chmod +x StemForge-<version>-linux-x64.AppImage
-./StemForge-<version>-linux-x64.AppImage
+chmod +x StemForge-<version>-linux-x86_64.AppImage
+./StemForge-<version>-linux-x86_64.AppImage
 ```
 
 ## First launch
@@ -141,8 +144,8 @@ a blank window:
    second and no half-written files are left behind.
 4. When it's done, **select the stems and drag them into your DAW**: one
    track per file, sample-aligned with the original. You can preview each
-   stem before dragging, or open the folder (**Show in Finder** / **Show in
-   Explorer**).
+   stem before dragging, or open the folder (**Show in Finder** on macOS,
+   **Show in File Explorer** on Windows, **Show in Folder** on Linux).
 
 Stems land in `~/Music/StemForge/<song name>/` as 24-bit WAV (or FLAC),
 with the same sample rate and exactly the same length in samples as your
@@ -158,7 +161,8 @@ Drum detail (kick, snare, toms, hi-hat, cymbals), lead/backing vocals and
 vocal de-reverb appear in the app only once their models pass the quality
 bar: an option that doesn't sound good isn't shown.
 
-The interface is in English and Italian (it follows your system), works
+The interface is in English and Italian (it follows your system; you can
+also pick the language on the start screen, and the choice is kept), works
 fully from the keyboard (Enter = Separate, Esc = Cancel/Back,
 Cmd/Ctrl+O = choose file) and with VoiceOver / NVDA.
 
@@ -235,7 +239,7 @@ the download list, choose **Keep** → **Keep anyway**.
 
 - Make sure it is executable: `chmod +x StemForge-*.AppImage`.
 - If it complains about **FUSE**, install your distribution's FUSE package,
-  or start it without FUSE: `./StemForge-<version>-linux-x64.AppImage --appimage-extract-and-run`.
+  or start it without FUSE: `./StemForge-<version>-linux-x86_64.AppImage --appimage-extract-and-run`.
 
 ### Check the SHA-256
 
@@ -259,8 +263,11 @@ one-time model download. No account, no telemetry, no auto-update. See
 
 **Which DAWs does it work with?** Any DAW that accepts files dragged from
 the desktop: StemForge uses the operating system's own drag & drop, with
-no code specific to any DAW. It is designed and checked by hand against
-Ableton Live, Logic Pro, FL Studio, Reaper, Cubase, Studio One and Bitwig.
+no code specific to any DAW. The targets are Ableton Live, Logic Pro, FL
+Studio, Reaper, Cubase, Studio One and Bitwig, on every system where they
+exist. Drag & drop cannot be tested automatically: each DAW is checked by
+hand with a checklist, and the release notes say which combinations have
+been checked for that version.
 
 **Why isn't it a VST/AU plugin?** A plugin runs on the DAW's audio thread,
 with a few milliseconds per buffer and a hard ban on allocating memory.
@@ -300,11 +307,12 @@ useful to you, see [Support and donations](#support-and-donations).
 | Message or symptom | What to do |
 |---|---|
 | "Not enough memory" | Close other apps, or use the `Fast` preset. The job can be started again. |
-| "Not enough disk space" | StemForge checks before starting: free the space it indicates, or choose another output folder. |
-| The model download fails | Check the connection; a firewall or proxy must let you reach `dl.fbaipublicfiles.com`. Press retry: files already downloaded are kept. |
+| "Not enough disk space" | StemForge checks before starting, from what you asked for: free the space it indicates, or ask for fewer stems. |
+| The model download fails | Check the connection; a firewall or proxy must let you reach `dl.fbaipublicfiles.com`. Then retry. A file damaged by an interrupted download is recognised by its SHA-256 and downloaded again. |
 | A file is refused when dropped | The format isn't supported, or it isn't audio. DRM-protected files (e.g. `.m4p` purchases from the old iTunes Store, Apple Music downloads) cannot be read. |
 | "Almost silent" notice on a stem | That instrument is (nearly) absent from the song. The file is written anyway. |
 | One song in a batch fails | The others carry on; you get a summary at the end. |
+| "The file is longer than 30 minutes" | Split it in your DAW or audio editor first: StemForge refuses files over 30 minutes. |
 | The estimate was wrong | It improves with every completed job. If it is far off, [export diagnostics](#export-diagnostics) and open an issue. |
 | Dragging into the DAW does nothing | Drag the stems into a track area/arrangement, not onto a plugin. Or use **Show in Finder/Explorer** and drag from there. |
 
@@ -343,11 +351,14 @@ to a file:
 # macOS
 /Applications/StemForge.app/Contents/MacOS/StemForge --selftest --offline --report ~/Desktop/selftest.txt
 # Linux
-./StemForge-<version>-linux-x64.AppImage --selftest --offline --report ~/selftest.txt
+./StemForge-<version>-linux-x86_64.AppImage --selftest --offline --report ~/selftest.txt
 ```
 
-On Windows: `StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.txt"`
-from the installation folder (by default `%LOCALAPPDATA%\Programs\StemForge`).
+On Windows (Command Prompt, from the installation folder — by default
+`%LOCALAPPDATA%\Programs\StemForge`):
+`StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.txt"`.
+Without `--offline` the self-test also checks the HTTPS connection to the
+model server.
 
 ## Support and donations
 
@@ -360,16 +371,45 @@ from the installation folder (by default `%LOCALAPPDATA%\Programs\StemForge`).
 ## Development
 
 Contributions are welcome — read **[CONTRIBUTING.md](CONTRIBUTING.md)**
-first. The full specification, with every decision and the reasoning
-behind it, is in **[BUILD_SPEC.md](BUILD_SPEC.md)** (Italian).
+first: environments, build profiles, tests and the hard rules. The full
+specification, with every decision and the reasoning behind it, is in
+**[BUILD_SPEC.md](BUILD_SPEC.md)** (Italian).
 
 From source, the same pipeline runs headless:
 
 ```bash
 stemforge song.mp3 --stems vocals,drums,bass,other
 stemforge song.mp3 --stems vocals --quality balanced   # about 1/4 of the time
-stemforge song.mp3 --stems vocals,drums --dry-run      # print the plan
+stemforge song.mp3 --stems vocals,drums --dry-run      # print the plan and the estimate
 ```
+
+Other options: `--format wav|flac`, `--device auto|cpu|…`, `--out FOLDER`,
+`--dereverb`.
+
+## Signed distribution
+
+*(Referred to as "Distribuzione firmata" in the build scripts.)*
+
+Releases are not signed with paid certificates yet (BUILD_SPEC §9.3): the
+macOS app is signed ad-hoc and the user follows
+[The app won't open](#the-app-wont-open). The pipeline is ready to sign
+as soon as credentials exist:
+
+- **macOS** (first priority: from macOS 15 an unsigned app can only be
+  opened from System Settings): an Apple Developer Program membership and
+  a *Developer ID Application* certificate. `packaging/notarize.sh` signs
+  from the inside out with the hardened runtime and a timestamp (never
+  `--deep`), notarizes with `notarytool`, staples the DMG, and refuses to
+  build if any model weight with a non-commercial or unverified license is
+  referenced. It reads `APPLE_SIGNING_IDENTITY`, `APPLE_ID`,
+  `APPLE_TEAM_ID` and `APPLE_APP_PASSWORD` (an app-specific password);
+  in CI they come from repository secrets, together with the certificate
+  itself, under the names used by the release workflow.
+- **Windows**: an Authenticode code-signing certificate; `signtool` then
+  signs `StemForge.exe` and the installer, and SmartScreen stops warning
+  once the certificate has built a reputation.
+
+Until then every release publishes `SHA256SUMS.txt`.
 
 ## Built on
 

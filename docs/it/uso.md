@@ -30,10 +30,12 @@ sceglierlo (scorciatoia: **Cmd+O** su Mac, **Ctrl+O** su Windows e Linux).
   spuntati.
 - **Strumentale** è tutto tranne la voce, in un file solo: la base per il
   karaoke o per un remix.
-- I dettagli della batteria (cassa, rullante, tom, hi-hat, piatti) e della
-  voce (voce principale, cori, togliere il riverbero) compaiono solo quando
-  i loro modelli superano la prova d'ascolto: un'opzione che non suona bene
-  non viene mostrata.
+- Sotto le card di batteria e voce ci sono due blocchi a fisarmonica,
+  chiusi di default: **Dettaglio batteria** (Kick, Snare, Toms, Hi-hat,
+  Cymbals) e **Dettaglio voce** (Lead, Cori e l'opzione **Togli il
+  riverbero**). Spuntare un dettaglio seleziona da solo lo strumento da
+  cui deriva. Queste voci compaiono solo quando i loro modelli superano la
+  prova d'ascolto: un'opzione che non suona bene non viene mostrata.
 
 In fondo ci sono due soli controlli:
 
@@ -144,7 +146,9 @@ Le proporzioni invece valgono ovunque:
 
 ## Lingua e accessibilità
 
-- L'interfaccia è in italiano e in inglese e segue la lingua del sistema.
+- L'interfaccia è in italiano e in inglese e segue la lingua del sistema;
+  puoi anche sceglierla dalla schermata iniziale (**Lingua**), e la scelta
+  resta per i prossimi avvii.
 - Si usa tutta da tastiera: **Tab** per spostarsi, **Invio** = Separa,
   **Esc** = Annulla/Indietro, **Cmd/Ctrl+O** = scegli file.
 - Funziona con VoiceOver (Mac) e NVDA (Windows); segue il tema chiaro o
