@@ -57,9 +57,16 @@ def test_installer_script_compiles(tools, packaging_copy: Path):
     assert setup.is_file() and setup.stat().st_size > 0
 
 
-def test_longest_path_is_measured_inside_the_app(tools, packaging_copy: Path):
+def test_longest_path_counts_inno_temporary_name(tools, packaging_copy: Path):
+    """Un nome corto conta come il nome temporaneo di Inno (17 caratteri),
+    uno più lungo conta per sé: entrambi devono stare sotto MAX_PATH."""
     build_installer, _ = tools
-    assert build_installer.longest_relative_path(packaging_copy / "dist" / "StemForge") == len(_FAKE_DEEP_FILE)
+    app = packaging_copy / "dist" / "StemForge"
+    folder = len(str(Path(_FAKE_DEEP_FILE).parent))
+    assert build_installer.longest_relative_path(app) == folder + 1 + build_installer.INNO_TEMP_NAME_CHARS
+    long_name = Path(_FAKE_DEEP_FILE).parent / ("n" * 40 + ".dll")
+    (app / long_name).write_bytes(b"dll finta")
+    assert build_installer.longest_relative_path(app) == len(str(long_name))
 
 
 def _iscc_raw(iscc: Path, iss: Path, *defines: str) -> subprocess.CompletedProcess:

@@ -11,9 +11,9 @@ Poi tre giri, ognuno installa in silenzio e disinstalla:
   predefinito è No, la cartella resta;
 - interattivo, risposta Sì: la cartella sparisce.
 
-Un quarto giro, con un installer compilato come se i percorsi lunghi di
-Windows fossero spenti (/DAssumeLongPathsDisabled), controlla che una
-/DIR= di un carattere oltre il limite sia rifiutata e una al limite no.
+Un quarto giro controlla il limite sulla lunghezza della cartella: un
+carattere oltre è rifiutato, al limite si installa, e senza il controllo
+Inno Setup si romperebbe davvero un carattere oltre.
 
 Le finestre del disinstallatore (MessageBox Win32, classe #32770) si
 leggono e si premono con user32: niente dipendenze, niente click a
@@ -37,12 +37,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import windows_integration as wi  # noqa: E402
-from build_installer import compile_installer  # noqa: E402
+from build_installer import compile_installer, longest_relative_path  # noqa: E402
 
 FAKE_DATA_DIR = "StemForge-collaudo-disinstallazione"
 # un file profondo come quelli di torch e Qt: fissa il limite della cartella
 FAKE_DEEP_FILE = "_internal/" + "/".join(["cartella-profonda-di-prova"] * 4) + "/libreria.dll"
 _IDOK, _IDCANCEL, _IDYES, _IDNO = 1, 2, 6, 7
+_INNO_EXIT_ABORTED = 5  # errore durante la copia dei file
 _BM_CLICK = 0x00F5
 _DM_GETDEFID = 0x0400
 _DC_HASDEFID = 0x534B
@@ -232,16 +233,31 @@ def _dir_of_length(base: Path, length: int) -> Path:
     return base / ("p" * padding) / "StemForge"
 
 
+def _silent_install_code(setup: Path, target: Path, log: Path) -> int:
+    return subprocess.run([str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER",
+                           f"/DIR={target}", f"/LOG={log}"], timeout=_COMPILE_TIMEOUT_S).returncode
+
+
 def _long_path_round(iscc: Path, work: Path) -> dict:
-    """Con i percorsi lunghi di Windows spenti (simulati: il dev-box li ha
-    accesi) una cartella troppo lunga è rifiutata, quella al limite no."""
-    setup = _build_installer(iscc, work / "bl", {"AssumeLongPathsDisabled": "1"})
-    limit = 259 - 1 - len(FAKE_DEEP_FILE)
+    """Il limite calcolato da build_installer è quello vero di Inno Setup.
+
+    Con il controllo: un carattere oltre il limite è rifiutato prima di
+    copiare, al limite si installa. Senza il controllo (/DNoPathLengthCheck,
+    solo qui): un carattere oltre il limite Inno si interrompe a metà copia
+    (uscita 5), quindi il limite non è troppo prudente e il controllo serve.
+    Vale con i percorsi lunghi di Windows accesi, come sul dev-box."""
+    setup = _build_installer(iscc, work / "con-controllo", {})
+    unchecked = _build_installer(iscc, work / "senza-controllo", {"NoPathLengthCheck": "1"})
+    limit = 259 - 1 - longest_relative_path(work / "con-controllo" / "packaging" / "dist" / "StemForge")
     too_long = _dir_of_length(work, limit + 1)
-    code = subprocess.run([str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER",
-                           f"/DIR={too_long}"], timeout=_COMPILE_TIMEOUT_S).returncode
-    if code == 0 or wi.installed_dir() is not None or (too_long / wi.APP_EXE).exists():
-        raise AssertionError(f"cartella di {limit + 1} caratteri accettata (uscita {code})")
+    code = _silent_install_code(setup, too_long, work / "rifiuto.log")
+    refused_log = (work / "rifiuto.log").read_text(encoding="utf-8", errors="replace")
+    if code == 0 or "Cartella troppo lunga" not in refused_log or (too_long / wi.APP_EXE).exists():
+        raise AssertionError(f"cartella di {limit + 1} caratteri non rifiutata (uscita {code})")
+    broken = _silent_install_code(unchecked, too_long, work / "senza-controllo.log")
+    if broken != _INNO_EXIT_ABORTED or wi.installed_dir() is not None:
+        raise AssertionError(f"senza controllo Inno ha installato a {limit + 1} caratteri (uscita {broken}): "
+                             "il limite è troppo prudente, rimisura INNO_TEMP_NAME_CHARS")
     at_limit = _dir_of_length(work, limit)
     _install(setup, at_limit)
     if not (at_limit / FAKE_DEEP_FILE).is_file():
@@ -250,8 +266,7 @@ def _long_path_round(iscc: Path, work: Path) -> dict:
     subprocess.run([*command, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART"], check=True)
     _drive_dialogs_absent(command)
     return {"round": "percorso-lungo", "dialogs": [], "limit_chars": limit, "refused_exit_code": code,
-            "data_kept": None}
-
+            "unchecked_exit_code": broken, "data_kept": None}
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])

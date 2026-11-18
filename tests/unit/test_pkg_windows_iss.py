@@ -144,8 +144,26 @@ def test_uninstall_asks_before_deleting_and_never_in_silent_mode():
     assert code.index("MsgBox(") < code.index("DelTree")
 
 
+def test_test_only_switches_are_off_in_the_real_build():
+    """DataDirName e NoPathLengthCheck esistono solo per il collaudo: la
+    build vera (build_installer.main) non li passa e lo script non li accende."""
+    text = ISS.read_text(encoding="utf-8-sig")
+    assert not re.search(r"^\s*#define\s+NoPathLengthCheck", text, re.M)
+    assert "#ifdef NoPathLengthCheck" in text
+    source = (ROOT / "packaging" / "windows" / "build_installer.py").read_text(encoding="utf-8")
+    main = source[source.index("def main()"):]
+    assert "compile_installer(args.iscc, PACKAGING, version)" in main
+
+
+def test_folder_length_is_checked_before_copying():
+    code = "\n".join(_section("Code"))
+    check = code.index("function NextButtonClick")
+    assert "wpSelectDir" in code[check:] and "MaxInstallDirLength()" in code[check:]
+    assert "LongPathsEnabled" not in code, "Inno non scrive oltre MAX_PATH nemmeno con i percorsi lunghi attivi"
+
+
 @pytest.mark.parametrize("language", ["italian", "english"])
 def test_messages_exist_in_both_languages(language: str):
     names = {line.split("=", 1)[0] for line in _section("CustomMessages")}
-    for message in ("DeleteUserData", "DeleteFailed", "AudioFileType"):
+    for message in ("DeleteUserData", "DeleteFailed", "AudioFileType", "PathTooLong"):
         assert f"{language}.{message}" in names

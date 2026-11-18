@@ -4,9 +4,10 @@
 
 Un solo comando, uguale in CI e sul dev-box: genera l'icona .ico, misura
 il percorso relativo più lungo dentro l'app e lo passa a ISCC insieme
-alla versione. Quella misura serve all'installer per rifiutare una
-cartella in cui l'app, una volta installata, non potrebbe caricare le sue
-DLL (Windows con i percorsi lunghi disattivati, cioè il default).
+alla versione. Quella misura serve all'installer per rifiutare subito,
+con un messaggio chiaro, una cartella in cui non riuscirebbe a scrivere
+tutti i file (Inno Setup si ferma oltre MAX_PATH anche con i percorsi
+lunghi di Windows attivi) invece di interrompersi a metà copia.
 
 Scrive dist/StemForge-<versione>-windows-x64-setup.exe nella radice del repo.
 """
@@ -24,6 +25,11 @@ PACKAGING = HERE.parent
 ROOT = PACKAGING.parent
 ISS_NAME = "stemforge.iss"
 _COMPILE_TIMEOUT_S = 30 * 60
+# Misurato con ISCC 6.7.2 sul dev-box (cartelle di prova lunghe un carattere
+# alla volta): un file la cui cartella supera 259 - 1 - 17 caratteri non si
+# crea ("Impossibile trovare il percorso specificato"), qualunque sia il suo
+# nome. 17 è la lunghezza del nome temporaneo che Inno usa durante la copia.
+INNO_TEMP_NAME_CHARS = 17
 
 sys.path.insert(0, str(HERE))
 from make_ico import make_ico  # noqa: E402
@@ -39,8 +45,20 @@ def app_version(root: Path = ROOT) -> str:
 
 
 def longest_relative_path(app: Path) -> int:
-    """Caratteri del percorso più lungo sotto la cartella dell'app, separatore iniziale escluso."""
-    return max(len(str(p.relative_to(app))) for p in app.rglob("*"))
+    """Caratteri del percorso più lungo che Inno Setup scrive sotto la cartella
+    dell'app, separatore iniziale escluso.
+
+    Inno scrive ogni file prima con un nome temporaneo nella sua cartella e
+    poi lo rinomina: conta il più lungo fra i due. Inno non sa scrivere oltre
+    MAX_PATH nemmeno con i percorsi lunghi di Windows attivi (provato)."""
+    lengths = []
+    for path in app.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(app)
+        folder = len(str(relative.parent)) + 1 if relative.parent.parts else 0
+        lengths.append(max(len(str(relative)), folder + INNO_TEMP_NAME_CHARS))
+    return max(lengths)
 
 
 def setup_path(packaging: Path, version: str) -> Path:

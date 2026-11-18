@@ -19,11 +19,12 @@
 ;   log (~1 GB in %LOCALAPPDATA%\StemForge): lasciarli in silenzio sarebbe
 ;   un GB perso, cancellarli in silenzio un download da rifare. In modalità
 ;   silenziosa nessuno può rispondere, quindi i dati restano.
-; - percorsi lunghi: con i percorsi lunghi di Windows disattivati (il
-;   default) un file oltre 259 caratteri non si apre, e l'app installata
-;   in una cartella troppo profonda non caricherebbe le sue DLL. L'installer
-;   rifiuta quella cartella con un messaggio chiaro invece di lasciare
-;   un'app rotta; con i percorsi lunghi attivi la accetta.
+; - percorsi lunghi: Inno Setup non scrive file oltre MAX_PATH (259
+;   caratteri) nemmeno con i percorsi lunghi di Windows attivi (provato
+;   con ISCC 6.7.2: la copia si interrompe a metà con "Impossibile trovare
+;   il percorso specificato"). L'installer rifiuta quindi PRIMA di copiare,
+;   con un messaggio chiaro, una cartella in cui il file più profondo
+;   dell'app non ci starebbe.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -83,8 +84,8 @@ italian.DeleteFailed=Impossibile eliminare del tutto %1: puoi cancellarla a mano
 english.DeleteFailed=Could not fully delete %1: you can remove it by hand.
 italian.AudioFileType=File audio
 english.AudioFileType=Audio file
-italian.PathTooLong=La cartella scelta è troppo lunga:%n%n%1%n%nCon i percorsi lunghi di Windows disattivati StemForge non potrebbe avviarsi da lì. Scegli una cartella di al massimo %2 caratteri.
-english.PathTooLong=The selected folder is too long:%n%n%1%n%nWith Windows long paths disabled StemForge could not start from there. Choose a folder of at most %2 characters.
+italian.PathTooLong=La cartella scelta è troppo lunga (%3 caratteri):%n%n%1%n%nAlcuni file di StemForge supererebbero il limite di 259 caratteri dei percorsi di Windows. Scegli una cartella di al massimo %2 caratteri.
+english.PathTooLong=The selected folder is too long (%3 characters):%n%n%1%n%nSome StemForge files would exceed the 259-character Windows path limit. Choose a folder of at most %2 characters.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -143,20 +144,6 @@ const
   ClassicMaxPath = 259;
   LongestRelPath = {#LongestRelPath};
 
-function LongPathsEnabled(): Boolean;
-var
-  Enabled: Cardinal;
-begin
-#ifdef AssumeLongPathsDisabled
-  { solo collaudo (check_uninstall_prompt.py): il dev-box li ha attivi }
-  Enabled := 0;
-#else
-  if not RegQueryDWordValue(HKLM, 'SYSTEM\CurrentControlSet\Control\FileSystem', 'LongPathsEnabled', Enabled) then
-    Enabled := 0;
-#endif
-  Result := Enabled = 1;
-end;
-
 function MaxInstallDirLength(): Integer;
 begin
   { cartella + separatore + percorso interno più lungo entro MAX_PATH }
@@ -171,11 +158,17 @@ begin
   if CurPageID <> wpSelectDir then
     Exit;
   Dir := RemoveBackslashUnlessRoot(WizardDirValue());
-  if (Length(Dir) > MaxInstallDirLength()) and not LongPathsEnabled() then
+#ifdef NoPathLengthCheck
+  { solo collaudo (check_uninstall_prompt.py): prova che senza controllo la copia si rompe }
+  Log(Format('Controllo della lunghezza spento: cartella di %d caratteri', [Length(Dir)]));
+  Exit;
+#endif
+  if Length(Dir) > MaxInstallDirLength() then
   begin
     { in silenzio (/DIR= troppo lunga) il messaggio va nel log e Setup esce con errore }
     Log(Format('Cartella troppo lunga: %d caratteri, massimo %d', [Length(Dir), MaxInstallDirLength()]));
-    SuppressibleMsgBox(FmtMessage(CustomMessage('PathTooLong'), [Dir, IntToStr(MaxInstallDirLength())]),
+    { una riga che comincia con "[" sarebbe letta come una nuova sezione }
+    SuppressibleMsgBox(FmtMessage(CustomMessage('PathTooLong'), [Dir, IntToStr(MaxInstallDirLength()), IntToStr(Length(Dir))]),
                        mbError, MB_OK, IDOK);
     Result := False;
   end;
