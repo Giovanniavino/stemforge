@@ -12,27 +12,33 @@
 #   CI:      job con `container: quay.io/pypa/manylinux_2_28_x86_64@sha256:...`
 #   dev-box: python3 packaging/linux/rootless_container.py (vedi il suo doc)
 #
-# Passi: lock -> venv -> PyInstaller (packaging/stemforge.spec) ->
-# librerie di sistema (bundle_libs.py) -> AppDir -> appimagetool.
+# Passi: Python con libpython condivisa (build_python.sh) -> lock -> venv
+# -> PyInstaller (packaging/stemforge.spec) -> librerie di sistema
+# (bundle_libs.py) -> AppDir -> appimagetool.
 #
 # Variabili (tutte facoltative):
 #   STEMFORGE_LOCK      lock con hash (default: requirements-linux-x64.lock)
 #   STEMFORGE_WORK      cartella di lavoro (default: build/appimage)
 #   STEMFORGE_DIST      dove scrivere l'AppImage (default: dist)
+#   STEMFORGE_PYTHON_PREFIX  dove compilare CPython (default:
+#                       $STEMFORGE_WORK/python; la CI lo mette in cache)
 #   STEMFORGE_REQUIRE_FFMPEG=1  la build fallisce senza il FFmpeg LGPL
 #                       (packaging/ffmpeg/out/linux-x64/ffmpeg): la
 #                       release la imposta, letta da stemforge.spec
 #   STEMFORGE_SKIP_SYSTEM_PACKAGES=1  non installare i pacchetti dnf
 #                       (gia' presenti nell'immagine)
+#   STEMFORGE_KEEP_VENV=1  riusa il venv se c'e' (solo per iterare sul
+#                       dev-box: una release lo ricrea sempre dal lock)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
-PYTHON="/opt/python/cp312-cp312/bin/python3.12"
 GLIBC_REQUIRED="2.28"
 LOCK="${STEMFORGE_LOCK:-$REPO/requirements-linux-x64.lock}"
 WORK="${STEMFORGE_WORK:-$REPO/build/appimage}"
 DIST="${STEMFORGE_DIST:-$REPO/dist}"
+PYTHON_PREFIX="${STEMFORGE_PYTHON_PREFIX:-$WORK/python}"
+PYTHON="$PYTHON_PREFIX/bin/python3.12"
 VENV="$WORK/venv"
 APPDIR="$WORK/StemForge.AppDir"
 TOOLS="$WORK/tools"
@@ -63,7 +69,9 @@ check_environment() {
     local glibc
     glibc="$(getconf GNU_LIBC_VERSION | awk '{print $2}')"
     [ "$glibc" = "$GLIBC_REQUIRED" ] || die "glibc $glibc: la build va fatta in manylinux_2_28 (glibc $GLIBC_REQUIRED), vedi l'intestazione"
-    [ -x "$PYTHON" ] || die "manca $PYTHON: non e' l'immagine manylinux_2_28"
+    if [ ! -f /etc/redhat-release ] || ! command -v dnf >/dev/null; then
+        die "non e' l'immagine manylinux_2_28 (AlmaLinux 8 con dnf)"
+    fi
     [ -f "$LOCK" ] || die "manca il lock $LOCK (lo genera packaging/gen_locks.py)"
 }
 
@@ -95,6 +103,10 @@ install_system_packages() {
 }
 
 make_venv() {
+    if [ "${STEMFORGE_KEEP_VENV:-0}" = "1" ] && [ -x "$VENV/bin/python" ]; then
+        log "venv riusato (STEMFORGE_KEEP_VENV=1): $VENV"
+        return
+    fi
     log "ambiente Python dal lock ($LOCK)"
     rm -rf "$VENV"
     "$PYTHON" -m venv "$VENV"
@@ -180,6 +192,7 @@ main() {
     check_lock_is_cpu_only
     install_system_packages
     mkdir -p "$WORK"
+    bash "$HERE/build_python.sh" "$PYTHON_PREFIX"
     make_venv
     run_pyinstaller
     make_appdir

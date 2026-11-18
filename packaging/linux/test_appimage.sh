@@ -80,12 +80,12 @@ run_selftest() {
 
 main() {
     install_host_libraries
-    local scratch
-    scratch="$(mktemp -d)"
-    trap 'rm -rf "$scratch"' EXIT
+    # globale, non local: la trap gira a fine script, fuori da main
+    SCRATCH="$(mktemp -d)"
+    trap 'rm -rf "$SCRATCH"' EXIT
     chmod +x "$APPIMAGE_FILE"
-    (cd "$scratch" && "$APPIMAGE_FILE" --appimage-extract >/dev/null)
-    check_platform_plugins "$scratch/squashfs-root"
+    (cd "$SCRATCH" && "$APPIMAGE_FILE" --appimage-extract >/dev/null)
+    check_platform_plugins "$SCRATCH/squashfs-root"
     run_selftest "$@"
 }
 
