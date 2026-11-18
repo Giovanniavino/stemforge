@@ -112,6 +112,11 @@ IT: dict[str, str] = {
     "cli.error": "errore su {name}: {message}",
     "cli.summary": "riepilogo errori:",
     "cli.cancelled": "annullato",
+    "cli.unknown_stem": "stem sconosciuto: {stem!r}. Validi: {valid}",
+    "cli.no_stems": "nessuno stem richiesto: indica almeno uno stem con --stems",
+    "cli.plan_model": "modello 1° stadio: {model}",
+    "cli.plan_pass": "  passata {index}: {label} [{backend}] -> {stems}",
+    "cli.plan_total": "stima totale: ~{seconds} s · passate: {count}",
 }
 
 EN: dict[str, str] = {
@@ -207,4 +212,9 @@ EN: dict[str, str] = {
     "cli.error": "error on {name}: {message}",
     "cli.summary": "error summary:",
     "cli.cancelled": "cancelled",
+    "cli.unknown_stem": "unknown stem: {stem!r}. Valid: {valid}",
+    "cli.no_stems": "no stems requested: name at least one stem with --stems",
+    "cli.plan_model": "1st-stage model: {model}",
+    "cli.plan_pass": "  pass {index}: {label} [{backend}] -> {stems}",
+    "cli.plan_total": "total estimate: ~{seconds} s · passes: {count}",
 }
