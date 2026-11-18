@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: User guide (English)
+    url: https://github.com/Giovanniavino/stemforge#readme
+    about: Installation, first launch, "The app won't open", FAQ and troubleshooting.
+  - name: Guida utente (italiano)
+    url: https://github.com/Giovanniavino/stemforge/blob/main/docs/it/README.md
+    about: Installazione, uso, problemi e domande frequenti.

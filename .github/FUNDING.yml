@@ -1,0 +1,18 @@
+# Donation links shown by GitHub as the "Sponsor" button of the repository.
+# https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button-in-your-repository
+#
+# PLACEHOLDER — NO DONATION ACCOUNT HAS BEEN PROVIDED YET.
+# Every entry below is commented out on purpose: no link is invented.
+# When the maintainer provides an account, uncomment ONLY that line and put
+# the real username there (a username, not a full URL, except for `custom`).
+# Then update the "Support and donations" section of README.md and
+# "Sostenere il progetto" in docs/it/problemi.md.
+#
+# github: <github-sponsors-username>
+# ko_fi: <ko-fi-username>
+# liberapay: <liberapay-username>
+# buy_me_a_coffee: <buymeacoffee-username>
+# patreon: <patreon-username>
+# open_collective: <opencollective-slug>
+# polar: <polar-username>
+# custom: ["<https://full-url-to-another-donation-page>"]

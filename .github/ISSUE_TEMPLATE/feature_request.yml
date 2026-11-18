@@ -1,0 +1,55 @@
+name: Feature request / Richiesta di una funzione
+description: Suggest an improvement. Read the non-goals first. / Proponi un miglioramento. Prima leggi i non-obiettivi.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        StemForge does **one** thing: it separates a song into stems and hands
+        them to your DAW by drag & drop. The previous project died of feature
+        creep, so these are **declined by design**
+        ([non-goals](https://github.com/Giovanniavino/stemforge/blob/main/BUILD_SPEC.md#non-obiettivi--da-rifiutare-se-emergono-in-corso-dopera)):
+
+        - a VST/AU plugin or real-time processing;
+        - generating DAW project files (.als, .RPP, AAF);
+        - slicing, pads, samplers, drum kits / one-shots, sequencer, effects, mixer;
+        - audio editing (trim, fade, EQ);
+        - cloud, accounts, telemetry, auto-update;
+        - training models.
+
+        StemForge fa **una** cosa: separa un brano in stem e li consegna alla
+        DAW con il drag & drop. Le richieste qui sopra vengono rifiutate per
+        scelta, non per pigrizia.
+  - type: checkboxes
+    id: non-goals
+    attributes:
+      label: Non-goals / Non-obiettivi
+      options:
+        - label: I have read the non-goals and my request is not one of them. / Ho letto i non-obiettivi e la mia richiesta non è fra questi.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does it solve? / Quale problema risolve?
+      description: Describe what you are trying to do, not only the solution. / Descrivi cosa cerchi di fare, non solo la soluzione.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would you like StemForge to do? / Cosa vorresti che facesse?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / Area
+      options:
+        - Separation quality or new stems / Qualità della separazione o nuovi stem
+        - Delivery to the DAW (drag & drop) / Consegna alla DAW
+        - Interface, language, accessibility / Interfaccia, lingua, accessibilità
+        - Installation and packages / Installazione e pacchetti
+        - Documentation / Documentazione
+        - Other / Altro
+    validations:
+      required: true

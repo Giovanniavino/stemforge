@@ -1,0 +1,91 @@
+name: Bug report / Segnalazione di un problema
+description: Something does not work as described. / Qualcosa non funziona come descritto.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. You can write in **English or Italian**.
+        Grazie della segnalazione. Puoi scrivere in **italiano o inglese**.
+
+        **Please attach the diagnostics file**: on the start screen click
+        **Export diagnostics** (macOS: also Help → Export diagnostics), save
+        the zip and drag it into the box at the bottom. Without it, most
+        problems cannot be understood.
+        It contains the log, the StemForge version, your system, the offline
+        self-test and the GPU check. **The log contains the names of the
+        songs you processed** and everything attached here is public: look
+        inside first and remove what you do not want to share.
+        [How to export diagnostics](https://github.com/Giovanniavino/stemforge#export-diagnostics) ·
+        [Come esportare la diagnostica](https://github.com/Giovanniavino/stemforge/blob/main/docs/it/problemi.md#esportare-la-diagnostica)
+  - type: dropdown
+    id: profile
+    attributes:
+      label: Which file did you install? / Quale file hai installato?
+      options:
+        - Mac Intel — StemForge-…-macos-x86_64.dmg (legacy-intel)
+        - Mac Intel — StemForge-Installer.zip (Mac mini installer)
+        - Mac Apple Silicon — StemForge-…-macos-arm64.dmg (mac-arm64)
+        - Windows — StemForge-…-windows-x64-setup.exe (win-x64)
+        - Linux — StemForge-…-linux-x86_64.AppImage (linux-x64)
+        - Built from source / Dai sorgenti
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: StemForge version / Versione di StemForge
+      description: Shown in the diagnostics file, or the version in the file name you downloaded.
+      placeholder: "e.g. 1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and computer / Sistema operativo e computer
+      description: |
+        macOS: Apple menu → About This Mac. Windows: Settings → System → About. Linux: distribution and version.
+      placeholder: "e.g. macOS 10.15.7, Mac mini Late 2012 · Windows 11 23H2 · Ubuntu 22.04"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened? / Cosa è successo?
+      description: The exact message you saw, if any. / Il messaggio esatto, se c'era.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce / Come riprodurlo
+      description: |
+        Which instruments you ticked, which quality preset, the file format and length (not the song itself).
+        Quali strumenti, quale qualità, formato e durata del file (non il brano).
+      placeholder: |
+        1. Dropped a 4-minute .m4a file
+        2. Ticked vocals + drums, quality Best
+        3. Pressed Separate → ...
+    validations:
+      required: true
+  - type: input
+    id: daw
+    attributes:
+      label: DAW (only for drag & drop problems) / DAW (solo per problemi di trascinamento)
+      placeholder: "e.g. Ableton Live 12.1 on Windows 11"
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics file / File di diagnostica
+      description: |
+        Drag the exported zip here. If the app does not even open, write that here instead.
+        Trascina qui lo zip esportato. Se l'app non si apre nemmeno, scrivilo qui.
+      placeholder: "Drop the diagnostics zip here"
+    validations:
+      required: true
+  - type: markdown
+    attributes:
+      value: |
+        Please **do not attach copyrighted songs**. If a specific file causes the
+        problem, describe it (format, length, sample rate, channels) instead.
+        Per favore **non allegare brani protetti da copyright**: descrivi il file.
