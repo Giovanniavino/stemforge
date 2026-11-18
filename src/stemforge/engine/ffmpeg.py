@@ -160,11 +160,13 @@ def _run(
     out, err = bytearray(), bytearray()
     readers = [threading.Thread(target=_drain, args=(s, b), daemon=True)
                for s, b in ((proc.stdout, out), (proc.stderr, err))]
+    if stdin is not None:
+        # anche la scrittura in un thread: un ffmpeg che smette di leggere
+        # bloccherebbe write() e il timeout non scatterebbe mai
+        readers.append(threading.Thread(target=_feed, args=(proc, stdin), daemon=True))
     for reader in readers:
         reader.start()
     try:
-        if stdin is not None:
-            _feed(proc, stdin)
         code = proc.wait(timeout=timeout)
     except BaseException:
         # timeout, annulla (KeyboardInterrupt) o altro: senza kill i thread
@@ -182,10 +184,11 @@ def _feed(proc: subprocess.Popen, data: bytes) -> None:
     assert proc.stdin is not None
     try:
         proc.stdin.write(data)
-    except BrokenPipeError:  # ffmpeg è uscito prima: il codice d'uscita lo dice
-        log.debug("ffmpeg ha chiuso stdin prima della fine dei dati")
-    finally:
         proc.stdin.close()
+    except OSError:
+        # ffmpeg è uscito (o è stato ucciso) prima: il codice d'uscita lo
+        # dice. Su Windows una pipe chiusa dà EINVAL, non BrokenPipeError.
+        log.debug("ffmpeg ha chiuso stdin prima della fine dei dati")
 
 
 def _tail(stderr: str) -> str:
