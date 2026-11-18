@@ -36,7 +36,9 @@ from stemforge.worker.launch import worker_command
 
 _SAMPLERATE = 44100
 _DECODE_SECONDS = 2.0
-_DECODE_FORMATS = ("wav", "flac", "ogg", "mp3", "m4a")
+# Letti da soundfile; m4a (AAC) e alac passano dal FFmpeg dell'app (D9).
+_DECODE_FORMATS = ("wav", "flac", "ogg", "mp3", "aiff")
+_FFMPEG_FIXTURES = (("aac", "decode_aac.m4a"), ("alac", "decode_alac.m4a"))
 # mp3/m4a aggiungono il ritardo del codec: decine di ms, mai 100
 _DURATION_TOLERANCE_S = 0.1
 _ROUNDTRIP_SECONDS = 6.0
@@ -119,44 +121,67 @@ def _check_tls(network: bool) -> str:
     return "connessione HTTPS al server dei modelli riuscita"
 
 
-def _write_aac(path: Path, audio: np.ndarray) -> None:
-    import av
-
-    with av.open(str(path), "w", format="mp4") as container:
-        stream = container.add_stream("aac", rate=_SAMPLERATE)
-        frame = av.AudioFrame.from_ndarray(audio, format="fltp", layout="stereo")
-        frame.sample_rate = _SAMPLERATE
-        for packet in stream.encode(frame):
-            container.mux(packet)
-        for packet in stream.encode(None):
-            container.mux(packet)
+_SF_SUBTYPES = {
+    "wav": "PCM_24", "flac": "PCM_24", "ogg": "VORBIS", "mp3": "MPEG_LAYER_III", "aiff": "PCM_24",
+}
 
 
-def _write_encoded(path: Path, fmt: str, audio: np.ndarray) -> None:
-    if fmt == "m4a":
-        _write_aac(path, audio)
-        return
-    import soundfile as sf
+def _verify_decoded(path: Path, label: str) -> None:
+    from stemforge.engine import audio_io
 
-    subtype = {"wav": "PCM_24", "flac": "PCM_24", "ogg": "VORBIS", "mp3": "MPEG_LAYER_III"}
-    sf.write(str(path), audio.T, _SAMPLERATE, subtype=subtype[fmt])
+    loaded = audio_io.load(path)
+    if abs(loaded.duration_s - _DECODE_SECONDS) > _DURATION_TOLERANCE_S:
+        raise AssertionError(f"{label}: durata {loaded.duration_s:.3f} s invece di {_DECODE_SECONDS} s")
+    if float(np.max(np.abs(loaded.data))) < 0.05:
+        raise AssertionError(f"{label}: decodificato in silenzio")
+    if audio_io.probe_duration(path) is None:
+        raise AssertionError(f"{label}: durata non leggibile senza decodificare")
 
 
 def _check_decoders(tmp: Path) -> str:
-    from stemforge.engine import audio_io
+    import soundfile as sf
 
     audio = _tone(_DECODE_SECONDS)
     for fmt in _DECODE_FORMATS:
         path = tmp / f"decode.{fmt}"
-        _write_encoded(path, fmt, audio)
-        loaded = audio_io.load(path)
-        if abs(loaded.duration_s - _DECODE_SECONDS) > _DURATION_TOLERANCE_S:
-            raise AssertionError(f"{fmt}: durata {loaded.duration_s:.3f} s invece di {_DECODE_SECONDS} s")
-        if float(np.max(np.abs(loaded.data))) < 0.05:
-            raise AssertionError(f"{fmt}: decodificato in silenzio")
-        if audio_io.probe_duration(path) is None:
-            raise AssertionError(f"{fmt}: durata non leggibile senza decodificare")
+        sf.write(str(path), audio.T, _SAMPLERATE, subtype=_SF_SUBTYPES[fmt])
+        _verify_decoded(path, fmt)
     return "letti: " + ", ".join(_DECODE_FORMATS)
+
+
+def _app_ffmpeg():
+    """Il modulo del FFmpeg dell'app con il binario presente.
+
+    Nel pacchetto un FFmpeg assente è un guasto (m4a e alac non si
+    aprirebbero); dai sorgenti è normale finché non lo si compila.
+    """
+    from stemforge.engine.decode import ffmpeg_module
+
+    ffmpeg = ffmpeg_module()
+    if ffmpeg is not None and ffmpeg.locate() is not None:
+        return ffmpeg
+    if getattr(sys, "frozen", False):
+        raise FileNotFoundError("FFmpeg dell'app assente dal pacchetto: m4a e alac non si aprono")
+    raise _Skip("FFmpeg dell'app non compilato in questo ambiente di sviluppo")
+
+
+def _check_ffmpeg_license() -> str:
+    """D9: il FFmpeg che viaggia con l'app deve essere LGPL, mai --enable-gpl."""
+    info = _app_ffmpeg().license_info()
+    if "--enable-gpl" in info or "--enable-nonfree" in info:
+        raise AssertionError(f"FFmpeg compilato con licenza GPL/nonfree:\n{info}")
+    if "Lesser General Public License" not in info and "LGPL" not in info:
+        raise AssertionError(f"licenza di FFmpeg non LGPL:\n{info}")
+    return info
+
+
+def _check_ffmpeg_decoders(tmp: Path) -> str:
+    ffmpeg = _app_ffmpeg()
+    audio = _tone(_DECODE_SECONDS)
+    for codec, name in _FFMPEG_FIXTURES:
+        path = ffmpeg.encode_fixture(audio, _SAMPLERATE, tmp / name, codec)
+        _verify_decoded(path, codec)
+    return "letti: m4a (aac), alac"
 
 
 def _run_worker(job: SeparationJob) -> tuple[list[protocol.Message], str]:
@@ -248,6 +273,8 @@ def run(
             _run_check("dati di demucs nel pacchetto", _check_demucs_data),
             _run_check("certificati HTTPS", lambda: _check_tls(network)),
             _run_check("decodifica dei formati", lambda: _check_decoders(tmp)),
+            _run_check("FFmpeg dell'app (LGPL)", _check_ffmpeg_license),
+            _run_check("decodifica con FFmpeg (m4a, alac)", lambda: _check_ffmpeg_decoders(tmp)),
             *(_run_check(label, check) for label, check in extra),
             _run_check("separazione reale nel processo worker", lambda: _check_worker_roundtrip(tmp, network)),
         ]
