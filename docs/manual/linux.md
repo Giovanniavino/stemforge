@@ -52,7 +52,7 @@ statico. Senza FUSE: `--appimage-extract-and-run` (vedi §2).
 
 | # | Gesto | Esito atteso | Sistema / data / esito |
 |---|---|---|---|
-| 3.1 | Trascinare nella finestra un brano vero di 3–4 minuti, chiedere voce + batteria + basso + altro, qualità standard | gli stem compaiono in `~/Music/StemForge/<brano>/` (o nella cartella Musica localizzata da `xdg-user-dir MUSIC`), con `manifest.json` | |
+| 3.1 | Trascinare nella finestra un brano vero di 3–4 minuti, chiedere voce + batteria + basso + altro, qualità standard | gli stem compaiono in `~/Music/StemForge/<brano>/` (§7.3: proprio `~/Music`, anche dove `xdg-user-dir MUSIC` è `~/Musica`; annotarlo se l'utente se lo aspetta altrove), con `manifest.json` | |
 | 3.2 | Stesso brano in `.m4a` (AAC) e in ALAC | letti dal FFmpeg LGPL del pacchetto, nessun errore di formato | |
 | 3.3 | Durante la separazione, `top`: un solo processo worker che usa i core della CPU | nessun processo orfano dopo la fine o dopo "Annulla" | |
 | 3.4 | Separare due volte lo stesso brano | seconda cartella con suffisso ` (2)`, la prima intatta (§7.3) | |

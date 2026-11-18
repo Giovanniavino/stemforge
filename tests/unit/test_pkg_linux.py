@@ -205,8 +205,25 @@ def _git_index() -> dict[str, tuple[str, str]]:
     return index
 
 
-@pytest.mark.parametrize("name", ["build_appimage.sh", "test_appimage.sh", "AppRun"])
+@pytest.mark.parametrize("name", ["build_appimage.sh", "build_python.sh", "test_appimage.sh", "AppRun"])
 def test_scripts_run_on_linux_as_committed(name: str) -> None:
     mode, eol = _git_index()[name]
     assert mode == "100755", f"{name} senza bit di esecuzione nel repository"
     assert eol == "i/lf", f"{name} con CRLF: bash si fermerebbe a 'set -e\\r'"
+
+
+def test_python_for_pyinstaller_is_pinned_and_shared() -> None:
+    """manylinux ha solo Python statici: PyInstaller vuole la libpython condivisa."""
+    script = (LINUX / "build_python.sh").read_text(encoding="utf-8")
+    version = _shell_value(script, "PY_VERSION")
+    assert re.fullmatch(r"3\.12\.\d+", version), "il profilo linux-x64 e' Python 3.12 (§2.2)"
+    assert re.fullmatch(r"[0-9a-f]{64}", _shell_value(script, "PY_SHA256"))
+    assert _shell_value(script, "PY_URL").startswith("https://www.python.org/ftp/python/$PY_VERSION/")
+    assert re.search(r"^\s*\./configure [^\n]*--enable-shared", script, re.MULTILINE)
+
+
+def test_appimage_build_uses_the_shared_python() -> None:
+    script = (LINUX / "build_appimage.sh").read_text(encoding="utf-8")
+    assert "/opt/python/" not in script, "i Python di manylinux sono statici: PyInstaller li rifiuta"
+    assert 'bash "$HERE/build_python.sh" "$PYTHON_PREFIX"' in script
+    assert _shell_value(script, "PYTHON") == "$PYTHON_PREFIX/bin/python3.12"
