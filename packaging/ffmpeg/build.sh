@@ -296,4 +296,7 @@ main() {
   log "fatto: $OUT/$EXE"
 }
 
-main
+# exit sulla stessa riga: bash legge lo script man mano, e se il file
+# cambia mentre la build gira (git checkout, un editor) dopo main
+# eseguirebbe frammenti del file nuovo
+main; exit

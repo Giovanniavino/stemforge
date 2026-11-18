@@ -46,7 +46,9 @@ static_check() {
   local bin="$1" licenses config
   # FFMPEG_LICENSE ("LGPL version 2.1 or later") e FFMPEG_CONFIGURATION
   # sono stringhe costanti nel binario: sono quelle che stampano -L/-version
-  licenses="$(grep -aoE '[A-Za-z]*GPL version [0-9.]+ or later' "$bin" | sort -u)"
+  # "|| true": senza nessuna stringa grep esce con 1 e set -e chiuderebbe
+  # lo script in silenzio, senza dire perche' il binario e' rifiutato
+  licenses="$(grep -aoE '[A-Za-z]*GPL version [0-9.]+ or later' "$bin" | sort -u || true)"
   [ "$licenses" = "LGPL version 2.1 or later" ] \
     || fail "stringhe di licenza inattese: ${licenses:-nessuna}"
   config="$(grep -aoE -- '[^[:cntrl:]]*--disable-everything[^[:cntrl:]]*' "$bin" \
@@ -60,11 +62,11 @@ static_check() {
 }
 
 main() {
-  local mode=runtime
-  if [ "${1:-}" = --static ]; then mode=static; shift; fi
+  local static=0
+  if [ "${1:-}" = --static ]; then static=1; shift; fi
   [ $# -eq 1 ] || { echo "uso: $0 [--static] <ffmpeg>" >&2; exit 2; }
   [ -f "$1" ] || fail "$1 non esiste"
-  "${mode}_check" "$1"
+  if [ "$static" = 1 ]; then static_check "$1"; else runtime_check "$1"; fi
 }
 
-main "$@"
+main "$@"; exit
