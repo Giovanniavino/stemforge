@@ -87,8 +87,9 @@ Questa è la schermata da cui si trascina.
   DAW: in un solo gesto ottieni una traccia per file, già allineata al
   campione con il brano originale. Il drag funziona anche se in primo piano
   c'è la DAW: non serve cliccare prima su StemForge.
-- Il trascinamento **copia**: i file restano anche nella cartella di
-  StemForge.
+- Trascinare **non sposta** i file: restano nella cartella di StemForge.
+  Se la DAW li copia nel progetto o li usa da dove sono dipende dalle sue
+  impostazioni.
 - **Mostra nel Finder** (Mac), **Mostra in Esplora file** (Windows),
   **Mostra nella cartella** (Linux) apre la cartella con lo stem già
   evidenziato, per chi preferisce trascinare da lì o copiare i file
@@ -117,8 +118,10 @@ Musica/StemForge/Nome del brano/
 - Gli stem hanno **lo stesso sample rate e la stessa lunghezza in campioni**
   dell'originale. Niente normalizzazione, niente limiter, niente
   dissolvenze: sommati, ricostruiscono il mix. Il mix si fa nella DAW.
-- `manifest.json` serve a StemForge per riaprire il risultato senza
-  ricalcolare niente.
+- `manifest.json` descrive come sono stati ottenuti gli stem: brano di
+  partenza, modello, qualità, picco e volume di ogni file. Non serve
+  aprirlo, ma è comodo per ricordarsi, mesi dopo, con che impostazioni hai
+  lavorato.
 
 ## Quanto ci vuole
 
@@ -129,6 +132,8 @@ Le proporzioni invece valgono ovunque:
 
 - in **Bilanciata**, la sola voce costa circa **un quarto** dei quattro
   stem base; voce e batteria circa **la metà**;
+- chiedere **chitarra o piano** usa un altro modello, a sei stem, che fa
+  sempre una passata intera: costa fra una e quattro volte la sola voce;
 - i dettagli di batteria e voce aggiungono passate corte;
 - la **Massima** costa circa **tre volte** la separazione completa in
   Bilanciata. Su un Mac Intel di qualche anno fa può voler dire più di
@@ -147,8 +152,7 @@ Le proporzioni invece valgono ovunque:
 ## Lingua e accessibilità
 
 - L'interfaccia è in italiano e in inglese e segue la lingua del sistema;
-  puoi anche sceglierla dalla schermata iniziale (**Lingua**), e la scelta
-  resta per i prossimi avvii.
+  puoi anche sceglierla a mano, e la scelta resta per i prossimi avvii.
 - Si usa tutta da tastiera: **Tab** per spostarsi, **Invio** = Separa,
   **Esc** = Annulla/Indietro, **Cmd/Ctrl+O** = scegli file.
 - Funziona con VoiceOver (Mac) e NVDA (Windows); segue il tema chiaro o

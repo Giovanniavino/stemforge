@@ -146,6 +146,8 @@ a blank window:
    track per file, sample-aligned with the original. You can preview each
    stem before dragging, or open the folder (**Show in Finder** on macOS,
    **Show in File Explorer** on Windows, **Show in Folder** on Linux).
+   Dragging never moves the files: they stay in the StemForge folder, and
+   whether the DAW copies them into the project depends on its settings.
 
 Stems land in `~/Music/StemForge/<song name>/` as 24-bit WAV (or FLAC),
 with the same sample rate and exactly the same length in samples as your
@@ -162,7 +164,7 @@ vocal de-reverb appear in the app only once their models pass the quality
 bar: an option that doesn't sound good isn't shown.
 
 The interface is in English and Italian (it follows your system; you can
-also pick the language on the start screen, and the choice is kept), works
+also pick it by hand, and the choice is kept), works
 fully from the keyboard (Enter = Separate, Esc = Cancel/Back,
 Cmd/Ctrl+O = choose file) and with VoiceOver / NVDA.
 
@@ -179,7 +181,9 @@ StemForge promises instead:
   (e.g. *"~14 min · 4 passes"*).
 - **Time scales with what you ask for.** In `Balanced`, vocals alone take
   about a quarter of the time of all four base stems; vocals + drums about
-  half. Drum and vocal detail add short extra passes on top.
+  half. Asking for guitar or piano switches to a six-stem model that always
+  runs one full pass (between one and four times vocals alone). Drum and
+  vocal detail add short extra passes on top.
 - **`Best` costs more, on purpose**: roughly three times the full
   `Balanced` separation. On an old Intel Mac that can mean more than an
   hour for one song — the app says so up front, and `Balanced` is one
