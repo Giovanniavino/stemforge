@@ -152,7 +152,13 @@ def main() -> int:
         return 2
     report.parent.mkdir(parents=True, exist_ok=True)
     scratch = Path(tempfile.mkdtemp(prefix="stemforge-install-"))
-    summary = {"installer": str(setup), "installer_bytes": setup.stat().st_size, "cases": []}
+    container = wi.virtualized_localappdata()
+    if container:
+        print(f"ATTENZIONE: %LOCALAPPDATA% è deviata in {container} (contenitore MSIX): anche "
+              "%APPDATA% e HKCU lo sono, Esplora risorse dell'utente non vedrà l'installazione",
+              flush=True)
+    summary = {"installer": str(setup), "installer_bytes": setup.stat().st_size,
+               "msix_virtualized_localappdata": str(container) if container else None, "cases": []}
     for name, target in _cases(args, scratch):
         summary["cases"].append(_run_case(setup, name, target, report, args))
     summary["ok"] = all(case["ok"] for case in summary["cases"])

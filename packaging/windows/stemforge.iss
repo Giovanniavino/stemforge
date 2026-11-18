@@ -67,6 +67,8 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 LZMANumBlockThreads=4
 WizardStyle=modern
+; la lingua si chiede solo se quella di Windows non è né italiano né inglese
+ShowLanguageDialog=auto
 ChangesAssociations=yes
 CloseApplications=yes
 

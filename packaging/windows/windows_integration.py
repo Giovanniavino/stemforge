@@ -51,6 +51,28 @@ def known_folder(folder_id: str) -> Path:
         ctypes.windll.ole32.CoTaskMemFree(out)
 
 
+def virtualized_localappdata() -> Path | None:
+    """La copia privata di un pacchetto MSIX dove finisce %LOCALAPPDATA%, se c'è.
+
+    Un processo nato dentro un'app MSIX (per esempio un terminale aperto da
+    un'app dello Store) vede %LOCALAPPDATA%, %APPDATA% e HKCU virtualizzati:
+    installazione, menu Start e "Apri con" finiscono nella copia privata
+    del pacchetto ed Esplora risorse dell'utente non li vede. Il collaudo
+    resta valido per l'installer, ma il report deve dirlo.
+
+    Si prova scrivendo, non chiedendo: sul dev-box GetCurrentPackageFullName
+    risponde "nessun pacchetto" mentre le scritture vengono deviate."""
+    local = Path(os.environ["LOCALAPPDATA"])
+    probe = local / f"stemforge-probe-{uuid.uuid4().hex}"
+    probe.mkdir()
+    try:
+        packages = local / "Packages"
+        hits = list(packages.glob(f"*/LocalCache/Local/{probe.name}")) if packages.is_dir() else []
+    finally:
+        probe.rmdir()
+    return hits[0].parent if hits else None
+
+
 def _value(root: int, key: str, name: str = "") -> str | None:
     try:
         with winreg.OpenKey(root, key) as handle:

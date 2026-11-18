@@ -64,3 +64,21 @@ def test_qt_standard_paths_follow_the_redirection(wi, folder: str):
     from_qt = Path(QStandardPaths.writableLocation(locations[folder]))
     expected = wi.known_folder(getattr(wi, f"FOLDERID_{folder}"))
     assert os.path.normcase(from_qt) == os.path.normcase(expected)
+
+
+def test_virtualized_localappdata_tells_where_writes_really_go(wi, tmp_path: Path):
+    """Il report dell'installer dichiara se gira in un contenitore MSIX:
+    la risposta deve coincidere con dove finisce davvero una scrittura."""
+    local = Path(os.environ["LOCALAPPDATA"])
+    before = set(local.glob("stemforge-probe-*"))
+    redirected = wi.virtualized_localappdata()
+    assert set(local.glob("stemforge-probe-*")) == before, "la sonda non va lasciata in giro"
+    marker = local / f"stemforge-test-{tmp_path.name}"
+    marker.mkdir()
+    try:
+        copies = list((local / "Packages").glob(f"*/LocalCache/Local/{marker.name}"))
+    finally:
+        marker.rmdir()
+    assert (redirected is None) == (not copies)
+    if redirected is not None:
+        assert os.path.normcase(copies[0].parent) == os.path.normcase(redirected)
