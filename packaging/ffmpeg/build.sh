@@ -43,6 +43,8 @@ log() { echo "build.sh: $*" >&2; }
 # Solo cio' che serve a StemForge: decodifica dei formati audio comuni,
 # piu' gli encoder/muxer con cui i test generano i propri fixture.
 # Niente di GPL, niente di "nonfree", niente librerie esterne.
+# (le virgole sono le liste di configure, non separatori d'array)
+# shellcheck disable=SC2054
 COMMON_FLAGS=(
   --disable-everything --disable-autodetect --disable-network --disable-doc
   --disable-ffplay --disable-ffprobe --enable-ffmpeg
@@ -242,7 +244,7 @@ check_win_deps() {  # $1 binario
   local objdump="${MINGW_PREFIX:-x86_64-w64-mingw32-}objdump" dlls
   command -v "$objdump" >/dev/null 2>&1 || objdump=objdump
   dlls="$("$objdump" -p "$1" | grep -i 'DLL Name' | awk '{print $3}')"
-  log "DLL importate: $(printf '%s ' $dlls)"
+  log "DLL importate: $(printf '%s' "$dlls" | tr '\n' ' ')"
   # le DLL di MinGW (libwinpthread-1, libgcc_s_seh-1, libstdc++-6) non
   # esistono sul PC dell'utente: con -static non devono comparire
   if printf '%s\n' "$dlls" | grep -iE '^lib[a-z0-9_+-]*\.dll$'; then
