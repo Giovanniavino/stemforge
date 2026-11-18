@@ -120,7 +120,9 @@ class MainWindow(QMainWindow):
         current = self._stack.currentWidget()
         if current is self._picker:
             self._show_drop()
-        elif current is self._progress and self._progress.cancel_button.isVisible():
+        elif current is self._progress and not self._preparing:
+            # durante il primo avvio non c'è un Annulla: il download dei
+            # modelli non si interrompe con un tasto premuto per sbaglio
             self._bridge.cancel()
         elif current is self._result:
             self._show_drop()

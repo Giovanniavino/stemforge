@@ -121,7 +121,9 @@ _WIN_PERSONALIZE = (
 )
 
 # il focus passa da 2 a 3 px di bordo (forma, non solo colore) e il
-# padding cala di 1 px per non far saltare il layout
+# padding cala di 1 px per non far saltare il layout. Le scorciatoie e
+# Separa sono grandi (>= 44 px al 100%, il bersaglio minimo comodo) per
+# padding: crescono con il testo invece di tagliarlo
 _STYLESHEET = Template("""
 QWidget {
     background-color: $background;
@@ -137,14 +139,17 @@ QPushButton {
 }
 QPushButton:hover { background-color: $surface_hover; }
 QPushButton:focus { border: 3px solid $focus; padding: 6px 14px; }
+QPushButton#shortcut { padding: 13px 15px; }
+QPushButton#shortcut:focus { padding: 12px 14px; }
 QPushButton#primary {
     background-color: $accent;
     color: $on_accent;
     font-weight: bold;
     border-color: $accent;
+    padding: 15px 15px;
 }
 QPushButton#primary:hover { background-color: $accent_hover; }
-QPushButton#primary:focus { border: 3px solid $on_accent; padding: 6px 14px; }
+QPushButton#primary:focus { border: 3px solid $on_accent; padding: 14px 14px; }
 QPushButton#primary:disabled {
     background-color: $surface;
     color: $text_dim;

@@ -19,10 +19,10 @@ translate = QCoreApplication.translate
 OUTPUT_FOLDER_NAME = "StemForge"
 
 
-def reveal_label() -> str:
-    if sys.platform == "darwin":
+def reveal_label(platform: str = sys.platform) -> str:
+    if platform == "darwin":
         return translate("Conventions", "Show in Finder")
-    if sys.platform == "win32":
+    if platform == "win32":
         return translate("Conventions", "Show in File Explorer")
     return translate("Conventions", "Show in Folder")
 

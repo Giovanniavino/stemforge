@@ -127,7 +127,9 @@ class StemPicker(QWidget):
         self._all_button = QPushButton()
         self._vocals_button = QPushButton()
         for button in (self._all_button, self._vocals_button):
-            button.setMinimumHeight(44)
+            # grandi per padding nel tema, non per altezza fissa: un minimo
+            # fisso sotto l'altezza del testo ingrandito lo taglierebbe
+            button.setObjectName("shortcut")
             shortcuts.addWidget(button)
         layout.addLayout(shortcuts)
 
@@ -197,7 +199,6 @@ class StemPicker(QWidget):
 
         self._start = QPushButton()
         self._start.setObjectName("primary")
-        self._start.setMinimumHeight(48)
         layout.addWidget(self._start)
 
     def _wire(self) -> None:
