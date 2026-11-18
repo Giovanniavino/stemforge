@@ -107,22 +107,26 @@ def verify_checkpoint(path: Path) -> None:
 def _resolve_global(dotted: str) -> Any:
     module_name, _, attribute = dotted.rpartition(".")
     if module_name == "numpy.core.multiarray":
-        import numpy
-
-        # numpy 2 ha rinominato numpy.core in numpy._core (resta un alias
-        # che avvisa a ogni accesso): si prende il modulo vero.
-        multiarray = getattr(numpy, "_core", None) or numpy.core
-        return getattr(multiarray.multiarray, attribute)
+        # numpy 2 ha rinominato numpy.core in numpy._core e l'alias vecchio
+        # avvisa a ogni accesso: si prende il modulo vero quando c'e'.
+        try:
+            module = importlib.import_module("numpy._core.multiarray")
+        except ImportError:
+            module = importlib.import_module(module_name)
+        return getattr(module, attribute)
     return getattr(importlib.import_module(module_name), attribute)
 
 
 def _allowlist(names: tuple[str, ...]) -> list[Any]:
-    """Classi ammesse, ciascuna col nome con cui compare nel pickle."""
+    """Classi ammesse col nome scritto nel pickle e, se diverso, con
+    quello attuale (un file salvato con numpy 2 usa numpy._core)."""
     entries: list[Any] = []
     for dotted in names:
         obj = _resolve_global(dotted)
         actual = f"{getattr(obj, '__module__', '')}.{getattr(obj, '__name__', '')}"
-        entries.append(obj if actual == dotted else (obj, dotted))
+        entries.append(obj)
+        if actual != dotted:
+            entries.append((obj, dotted))
     return entries
 
 
