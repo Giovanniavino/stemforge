@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import stat
 import sys
+import time
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -65,7 +66,9 @@ def _is_text(path: Path) -> bool:
 
 
 def add_file(zf: zipfile.ZipFile, source: Path, arcname: str, executable: bool = False) -> None:
-    info = zipfile.ZipInfo(arcname)
+    # data vera del file: il default di ZipInfo e' il 1 gennaio 1980, che il
+    # Finder mostra cosi' e che sta al limite di cio' che i wheel accettano
+    info = zipfile.ZipInfo(arcname, date_time=time.localtime(source.stat().st_mtime)[:6])
     info.create_system = _UNIX
     info.external_attr = (_EXECUTABLE if executable else _REGULAR) << 16
     info.compress_type = zipfile.ZIP_DEFLATED

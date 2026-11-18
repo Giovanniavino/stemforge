@@ -64,6 +64,7 @@ def test_zip_from_the_repo_is_complete_and_unix_ready(tmp_path):
         assert zf.read("StemForge/packaging/icon.png") == (ROOT / "packaging" / "icon.png").read_bytes()
         for name, info in infos.items():
             assert stat.S_ISREG(_mode(info)), name
+            assert info.date_time[0] > 1980, f"{name} datato {info.date_time}"
             assert "__pycache__" not in name and not name.startswith("StemForge/tests/")
             if mi._is_text(Path(name)):
                 assert b"\r\n" not in zf.read(name), f"{name} ha fine riga Windows"

@@ -99,3 +99,48 @@ def test_missing_lock_stops_with_a_clear_message(tmp_path):
     result = run_comune(tmp_path, "install_locked_deps")
     assert result.returncode == 3
     assert "DIE: file mancante" in result.stdout and "requirements-macos-x86_64.lock" in result.stdout
+
+
+def _fake_build_env(home: Path, pyav_installed: bool) -> Path:
+    """Un "python" dell'ambiente di build che registra come pip viene chiamato."""
+    python = home / "Library" / "Application Support" / "StemForge" / "build-env" / "bin" / "python"
+    python.parent.mkdir(parents=True)
+    show_exit = 0 if pyav_installed else 1
+    python.write_bytes(
+        f'#!/bin/sh\necho "$*" >> "$HOME/pip.log"\n'
+        f'[ "$1 $2 $3" = "-m pip show" ] && exit {show_exit}\nexit 0\n'.encode())
+    python.chmod(0o755)
+    for lock in ("requirements-macos-x86_64.lock",
+                 "packaging/installer/requirements-build-macos-x86_64.lock"):
+        (home / lock).parent.mkdir(parents=True, exist_ok=True)
+        (home / lock).write_bytes(b"")
+    return home / "pip.log"
+
+
+def test_locked_install_is_hash_checked_binary_only_and_drops_pyav(tmp_path):
+    log = _fake_build_env(tmp_path, pyav_installed=True)
+    result = run_comune(tmp_path, "install_locked_deps && echo FATTO")
+    assert result.returncode == 0 and "FATTO" in result.stdout, result.stdout + result.stderr
+    app_lock, build_lock, show, uninstall, own = log.read_text(encoding="utf-8").splitlines()
+    assert app_lock.startswith("-m pip install --require-hashes --only-binary :all: "
+                               "--no-binary antlr4-python3-runtime,demucs,dora-search -r ")
+    assert app_lock.endswith("/requirements-macos-x86_64.lock")
+    assert "--require-hashes --only-binary :all: -r " in build_lock
+    assert build_lock.endswith("/requirements-build-macos-x86_64.lock")
+    assert show == "-m pip show av" and uninstall == "-m pip uninstall --quiet --yes av"
+    assert own.startswith("-m pip install --quiet ") and "--no-deps" in own
+
+
+def test_without_pyav_nothing_is_uninstalled(tmp_path):
+    log = _fake_build_env(tmp_path, pyav_installed=False)
+    assert run_comune(tmp_path, "install_locked_deps").returncode == 0
+    assert not any("uninstall" in line for line in log.read_text(encoding="utf-8").splitlines())
+
+
+@pytest.mark.parametrize("script", ["Installa StemForge.command", "Aggiorna StemForge.command"])
+def test_both_scripts_align_to_the_lock_before_building(script):
+    # Aggiorna non deve ricostruire sopra un ambiente rimasto alla versione vecchia
+    text = (ROOT / "packaging" / "installer" / script).read_text(encoding="utf-8")
+    steps = [text.index(f"\n{step}\n") for step in
+             ("install_locked_deps", "prepare_ffmpeg", "build_app", "copy_to_applications", "ffmpeg_notice")]
+    assert steps == sorted(steps)
