@@ -74,8 +74,9 @@ downloaded is exactly the one published ([how](#check-the-sha-256)).
 - **Disk:** about 1 GB for the separation models (downloaded once), plus
   room for your stems: a 24-bit stereo stem takes about 15 MB per minute of
   audio. StemForge checks the free space *before* it starts.
-- **Memory:** 8 GB of RAM is comfortable. With less, close other apps or
-  pick the `Fast` preset.
+- **Memory:** StemForge is designed to fit in a computer with 8 GB of RAM
+  (it loads one model at a time). If memory runs out, it tells you: close
+  other apps or pick the `Fast` preset.
 - **Internet:** only once, on first launch, to download the models.
 
 Linux is a second-tier platform: it is built and tested automatically, but

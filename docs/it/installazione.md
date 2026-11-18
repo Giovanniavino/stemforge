@@ -39,8 +39,9 @@ scaricato sia proprio quello pubblicato ([come si fa](#controllare-lo-sha-256)).
   una volta sola), più lo spazio per gli stem: uno stem stereo a 24 bit
   occupa circa 15 MB per minuto di audio. StemForge controlla lo spazio
   libero **prima** di cominciare, non a metà.
-- **Memoria:** con 8 GB di RAM si lavora tranquilli. Con meno, chiudi le
-  altre app o usa il preset **Veloce**.
+- **Memoria:** StemForge è pensato per stare in un computer con 8 GB di
+  RAM (carica un modello alla volta). Se la memoria finisce te lo dice:
+  chiudi le altre app o usa il preset **Veloce**.
 - **Internet:** serve una volta sola, al primo avvio, per scaricare i
   modelli.
 
@@ -74,7 +75,9 @@ l'app direttamente sul tuo Mac.
    ufficiale di python.org e ti chiede la password del Mac; ogni componente
    scaricato è verificato con il suo SHA-256. Durante l'installazione serve
    internet.
-4. Alla fine trovi StemForge in **Applicazioni**.
+4. Alla fine trovi StemForge in **Applicazioni**. Visto che l'app è stata
+   costruita sul tuo Mac, macOS non la blocca come "app di uno
+   sviluppatore non identificato".
 
 Per aggiornare un'installazione fatta così usa **"Aggiorna
 StemForge.command"**: non riscarica tutto e ci mette pochi minuti.

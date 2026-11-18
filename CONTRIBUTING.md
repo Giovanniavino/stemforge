@@ -138,7 +138,7 @@ if a file grows, split it.
     the file.
 12. Optimize only by measuring: profile first, gain ≥ 5% on the median of
     5 runs with `device=cpu`, identical result. Every attempt, kept or
-    dropped, goes in `docs/OPTIMIZATION_LOG.md`.
+    dropped, goes in [docs/OPTIMIZATION_LOG.md](docs/OPTIMIZATION_LOG.md).
 
 Licensing constraints that follow from this: StemForge is MIT; Qt and
 FFmpeg are used only as LGPL libraries or separate executables. **No GPL
