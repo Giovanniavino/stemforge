@@ -140,7 +140,11 @@ def test_unsigned_app_instructions_cover_every_system():
 
 def test_license_is_mit():
     assert _read("LICENSE").startswith("MIT License")
-    assert 'license = { text = "MIT" }' in _read("pyproject.toml")
+    # vecchia forma `{ text = "MIT" }` o espressione SPDX di PEP 639
+    declared = re.search(
+        r'^license\s*=\s*(?:\{\s*text\s*=\s*)?"([^"]+)"', _read("pyproject.toml"), re.MULTILINE
+    )
+    assert declared is not None and declared.group(1) == "MIT"
 
 
 def test_bug_template_asks_for_profile_and_diagnostics():

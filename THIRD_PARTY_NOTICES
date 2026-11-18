@@ -34,6 +34,13 @@ How the licenses were verified (2026-11-10)
   of the relevant members. Nothing was executed. What is still marked
   "[to confirm ...]" could not be settled that way and must be checked on
   the built bundle.
+- Re-checked on 2026-11-18: installed metadata of every pin of the
+  win-x64 lock (modern environment) and of the legacy-intel lock (legacy
+  environment), the PyPI JSON of antlr4-python3-runtime 4.9.3, lameenc
+  1.8.4, filelock 3.32.2, omegaconf 2.3.1 and av 13.1.0, and the version
+  strings of libsndfile_x64.dll (libsndfile 1.2.2, FLAC 1.4.3, libvorbis
+  1.3.7, libopus 1.5.2, LAME 3.100), libiomp5md.dll in torch 2.10.0 and
+  qtvirtualkeyboardplugin.dll in PySide6 6.7.3: no difference found.
 - tests/unit/test_docs_notices.py checks this file against the lock
   files: every pin of every distributed lock must appear in Part 2 with
   its version attributed to the right profile, and no Part 2 entry may
@@ -43,8 +50,9 @@ Profiles (BUILD_SPEC.md §2): legacy-intel = requirements-macos-x86_64.lock,
 mac-arm64 = requirements-macos-arm64.lock, win-x64 =
 requirements-windows-x64.lock, linux-x64 = requirements-linux-x64.lock.
 The linux-x64 versions below were taken from the lock of the dependency
-work area (branch feat/deps-profiles, 2026-11-10), which is not yet in
-this checkout: when it lands, the docs test checks them like the others.
+work area (branch feat/deps-profiles, 2026-11-10; re-checked against its
+commit 83f3e8e on 2026-11-18), which is not yet in this checkout: when it
+lands, the docs test checks them like the others.
 
 Full license texts: the build must copy every distributed package's
 license files (the `*.dist-info/licenses` folder, or LICENSE/COPYING
@@ -470,4 +478,6 @@ PART 3 — NATIVE LIBRARIES, RUNTIMES AND TOOLS IN THE PACKAGE
   license  : MIT (AppImage type 2 runtime)
   source   : https://github.com/AppImage/type2-runtime
   [version, and every system library bundled into the AppImage, to be filled in at
-  integration from the Linux packaging work]
+  integration from the Linux packaging work: its build script writes the list of
+  bundled system libraries next to the AppImage (StemForge-<version>-linux-x86_64.libs.txt);
+  each library in that list needs an entry here, with its license]

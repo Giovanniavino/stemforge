@@ -366,8 +366,12 @@ model server.
 
 ## Support and donations
 
-- **Bugs and questions:** [GitHub Issues](https://github.com/Giovanniavino/stemforge/issues/new/choose).
-  Please attach the diagnostics file.
+- **Bugs and questions:** [GitHub Issues](https://github.com/Giovanniavino/stemforge/issues/new/choose),
+  in English or Italian. Please attach the [diagnostics file](#export-diagnostics).
+- **Feature requests:** welcome, but read the
+  [non-goals](BUILD_SPEC.md#non-obiettivi--da-rifiutare-se-emergono-in-corso-dopera)
+  first: StemForge separates and delivers stems, and nothing else.
+- **Privacy:** StemForge collects nothing — see [PRIVACY.md](PRIVACY.md).
 - **Donations:** StemForge is free and will stay free. Donation links are
   not set up yet; when they are, they will appear here and as the
   **Sponsor** button of the repository.
