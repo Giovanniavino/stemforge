@@ -72,14 +72,26 @@ codesign --verify --deep --strict --verbose=2 "$APP"
 echo "impacchetto e notarizzo..."
 sh "$HERE/macos/make_dmg.sh" "$APP" "$DMG"
 codesign --force --timestamp --sign "$IDENTITY" "$DMG"
-# notarytool puo' uscire con 0 anche se Apple respinge: conta lo "status"
+# Il verdetto e' lo "status" del JSON, non il codice di uscita: notarytool
+# esce con 0 anche quando Apple respinge (Invalid), e quando fallisce per
+# rete o timeout il JSON puo' gia' contenere l'id da cui leggere il log.
+# Per questo l'uscita non ferma lo script qui (set -e) ma piu' sotto.
+json_field() {  # $1 = campo; stampa "" se il file non e' JSON valido
+    "$PYTHON" -c 'import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))
+except (OSError, ValueError, AttributeError):
+    print("")' "$WORK/submit.json" "$1"
+}
+NOTARY_TIMEOUT="${NOTARY_TIMEOUT:-2h}"  # di solito minuti; senza tetto un job di CI resta appeso
 xcrun notarytool submit "$DMG" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
-    --password "$APPLE_APP_PASSWORD" --wait --output-format json > "$WORK/submit.json"
-STATUS="$("$PYTHON" -c 'import json, sys; print(json.load(open(sys.argv[1])).get("status", ""))' "$WORK/submit.json")"
+    --password "$APPLE_APP_PASSWORD" --wait --timeout "$NOTARY_TIMEOUT" \
+    --output-format json > "$WORK/submit.json" || echo "notarytool e' uscito con errore" >&2
+STATUS="$(json_field status)"
 if [ "$STATUS" != "Accepted" ]; then
     echo "notarizzazione NON accettata (status: ${STATUS:-sconosciuto})" >&2
     cat "$WORK/submit.json" >&2
-    SUBMISSION="$("$PYTHON" -c 'import json, sys; print(json.load(open(sys.argv[1])).get("id", ""))' "$WORK/submit.json")"
+    SUBMISSION="$(json_field id)"
     if [ -n "$SUBMISSION" ]; then
         xcrun notarytool log "$SUBMISSION" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" \
             --password "$APPLE_APP_PASSWORD" >&2 || true
