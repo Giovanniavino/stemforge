@@ -10,7 +10,10 @@ gia' estratta e trasferita via Telegram/AirDrop arriva rotta.
 2. Fai doppio click su "Installa StemForge.command".
 
    Se macOS dice che arriva da uno sviluppatore non identificato:
-   click DESTRO sul file -> Apri -> Apri. (Solo la prima volta.)
+   - macOS 10.15 - 14: click DESTRO sul file -> Apri -> Apri.
+   - macOS 15 e successivi: chiudi l'avviso, poi Impostazioni di
+     Sistema -> Privacy e sicurezza -> in fondo "Apri comunque".
+   Serve solo la prima volta.
 
    Se non si apre nemmeno cosi', apri Terminale e incolla:
      cd [trascina qui la cartella estratta]
@@ -25,6 +28,10 @@ gia' estratta e trasferita via Telegram/AirDrop arriva rotta.
    - L'app viene COSTRUITA sul tuo Mac: per questo macOS non la
      bloccherà come "app di sviluppatore sconosciuto".
 
+4. Alla fine trovi StemForge in /Applications.
+   Al primo avvio scarica i modelli di separazione (~1 GB, una sola
+   volta), poi funziona per sempre offline.
+
 AGGIORNAMENTI: se StemForge e' gia' stato installato una volta su
 questo Mac, usa "Aggiorna StemForge.command" invece dell'installer:
 non riscarica Python, scarica solo le librerie cambiate (di solito
@@ -34,10 +41,6 @@ FILE M4A / AAC / ALAC: li legge un piccolo decoder FFmpeg (licenza LGPL)
 che lo zip puo' contenere. Se manca, alla fine l'installer lo dice con
 un avviso giallo ben visibile: StemForge funziona lo stesso con wav,
 flac, mp3, ogg e aiff, ma non apre m4a/aac/alac.
-
-4. Alla fine trovi StemForge in /Applications.
-   Al primo avvio scarica i modelli di separazione (~1 GB, una sola
-   volta), poi funziona per sempre offline.
 
 Requisiti: Mac Intel con macOS 10.15 Catalina o successivo (va bene
 anche un Mac mini del 2012), connessione a internet solo per
@@ -55,7 +58,3 @@ USO IN DUE PAROLE
 Trascina un brano dentro StemForge, spunta gli strumenti che vuoi,
 premi Separa. Poi trascina gli stem direttamente dentro il tuo progetto
 Ableton: una traccia per file, allineati al campione.
-
-La stima del tempo che vedi prima di partire è calibrata sul tuo Mac
-ed è onesta: la qualità massima può richiedere molto tempo, ed è una
-scelta — c'è il preset "Bilanciata" per il lavoro veloce.
