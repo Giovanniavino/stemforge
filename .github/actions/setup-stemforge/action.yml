@@ -12,6 +12,12 @@ inputs:
   lock:
     description: File di lock del profilo
     required: true
+  forbid-pyav:
+    description: >
+      "true" nella release: PyAV nell'ambiente fa fallire il job, perche'
+      il suo FFmpeg e' GPLv3 (D9). Altrove e' solo un avviso.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -71,6 +77,7 @@ runs:
       shell: bash
       env:
         LOCK: ${{ inputs.lock }}
+        FORBID_PYAV: ${{ inputs.forbid-pyav }}
       run: |
         [ -f "$LOCK" ] || { echo "lock assente: $LOCK" >&2; exit 1; }
         "$BASE_PY" -m venv .venv
@@ -80,7 +87,7 @@ runs:
           # percorso in forma Windows: lo usano anche gli step PowerShell
           VPY="$(cygpath -w "$PWD/.venv/Scripts/python.exe")"
         fi
-        "$VPY" -m pip install --upgrade --quiet pip "setuptools>=69" wheel
+        "$VPY" -m pip install --upgrade --quiet pip "setuptools>=77" wheel
         # Python puro pubblicato solo come sorgente (SDIST_ALLOWLIST di
         # packaging/gen_locks.py): si installa senza compilatore
         "$VPY" -m pip install --require-hashes \
@@ -89,10 +96,14 @@ runs:
         "$VPY" -m pip install --no-deps --no-build-isolation -e .
         "$VPY" -m pip install -r packaging/requirements-build.txt
         "$VPY" -c "import torch, PySide6, demucs; print('torch', torch.__version__, '| PySide6', PySide6.__version__)"
-        # D9: il FFmpeg di PyAV e' GPLv3. La release lo rifiuta (release.yml);
-        # qui solo un avviso, perche' i test di sviluppo girano anche prima
+        # D9: il FFmpeg di PyAV e' GPLv3. La release lo rifiuta; in ci.yml
+        # solo un avviso, perche' i test di sviluppo girano anche prima
         # che i lock lo abbiano tolto.
         if "$VPY" -c "import av" 2>/dev/null; then
+          if [ "$FORBID_PYAV" = "true" ]; then
+            echo "::error::PyAV e' installato dal lock $LOCK: il suo FFmpeg e' GPLv3 (BUILD_SPEC D9)"
+            exit 1
+          fi
           echo "::warning::PyAV e' installato dal lock $LOCK: il suo FFmpeg e' GPLv3 (BUILD_SPEC D9)"
         fi
         echo "STEMFORGE_PY=$VPY" >> "$GITHUB_ENV"
