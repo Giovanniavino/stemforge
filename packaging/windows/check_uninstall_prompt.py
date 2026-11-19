@@ -268,6 +268,7 @@ def _long_path_round(iscc: Path, work: Path) -> dict:
     return {"round": "percorso-lungo", "dialogs": [], "limit_chars": limit, "refused_exit_code": code,
             "unchecked_exit_code": broken, "data_kept": None}
 
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("report", type=Path)
