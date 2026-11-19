@@ -23,7 +23,10 @@ PY_URL="https://www.python.org/ftp/python/$PY_VERSION/Python-$PY_VERSION.tar.xz"
 PY_SHA256="b5796915dc45ff745cfb4e990a7e7c93d6f546328a102ce31448d69ebc37575c"
 # I moduli che senza la loro -devel configure salta in silenzio: ssl per
 # scaricare i pesi, ctypes per soundfile, lzma/bz2/zlib per i tar e i pesi.
-REQUIRED_MODULES="ssl, ctypes, lzma, bz2, zlib, sqlite3, uuid"
+# Niente _uuid (libuuid-devel): uuid ha il ripiego in Python puro, e la
+# -devel trascina un aggiornamento di util-linux che nel container senza
+# root vero (rootless_container.py) non si installa (file del gruppo tty).
+REQUIRED_MODULES="ssl, ctypes, lzma, bz2, zlib, sqlite3"
 
 die() { echo "build_python.sh: ERRORE: $*" >&2; exit 1; }
 log() { echo "build_python.sh: $*" >&2; }
@@ -44,7 +47,7 @@ install_build_deps() {
     fi
     log "librerie di sviluppo per i moduli della libreria standard"
     dnf -y -q install openssl-devel libffi-devel bzip2-devel xz-devel \
-        sqlite-devel libuuid-devel zlib-devel make
+        sqlite-devel zlib-devel make
 }
 
 fetch_source() {
