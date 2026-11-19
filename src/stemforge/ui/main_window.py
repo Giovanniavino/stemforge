@@ -83,6 +83,10 @@ class MainWindow(QMainWindow):
         basta il pulsante della schermata iniziale."""
         self._help_menu = self.menuBar().addMenu("")
         self._diagnostics_action = QAction(self)
+        # niente euristica dei ruoli: su macOS Qt sposta nel menu
+        # dell'app le voci che "sembrano" Preferenze o Informazioni, e una
+        # traduzione futura potrebbe somigliarci
+        self._diagnostics_action.setMenuRole(QAction.MenuRole.NoRole)
         self._diagnostics_action.triggered.connect(
             lambda: self._drop.footer.exporter.export(self)
         )

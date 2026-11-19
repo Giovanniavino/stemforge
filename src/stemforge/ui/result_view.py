@@ -68,7 +68,7 @@ class StemList(QListWidget):
             if item.data(_PATH_ROLE)
         ]
 
-    def startDrag(self, _actions) -> None:
+    def startDrag(self, _actions: Qt.DropAction) -> None:
         paths = self.selected_paths()
         if not paths:
             return
@@ -237,7 +237,7 @@ class ResultView(QWidget):
         self._playing = False
         self._update_play_button()
 
-    def _on_playback_state(self, state) -> None:
+    def _on_playback_state(self, state: object) -> None:
         from PySide6.QtMultimedia import QMediaPlayer
 
         if state != QMediaPlayer.PlaybackState.PlayingState:

@@ -23,6 +23,7 @@ from test_ui_support import (  # noqa: F401  (fixture)
 )
 
 from PySide6.QtCore import QMimeData, QStandardPaths, Qt
+from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QApplication
 
 from stemforge.ui import conventions, diagnostics_action, result_view
@@ -209,6 +210,8 @@ def test_help_menu_exports_diagnostics(qapp, language, fake_diagnostics, monkeyp
         window.install_help_menu()
     assert window._help_menu.title() == "&Aiuto"
     assert window._diagnostics_action.text() == "Esporta diagnostica…"
+    # resta nel menu Aiuto: Qt non la sposta nel menu dell'app
+    assert window._diagnostics_action.menuRole() == QAction.MenuRole.NoRole
     _chosen_folder(monkeypatch, tmp_path)
     window._diagnostics_action.trigger()
     _finish(window._drop.footer)

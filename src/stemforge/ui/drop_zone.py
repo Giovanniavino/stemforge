@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -136,7 +136,7 @@ class DropZone(QWidget):
             self._set_drag_active(True)
             event.acceptProposedAction()
 
-    def dragLeaveEvent(self, event) -> None:
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
         self._set_drag_active(False)
 
     def dropEvent(self, event: QDropEvent) -> None:

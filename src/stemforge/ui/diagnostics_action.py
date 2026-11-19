@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QObject, Signal
@@ -68,7 +69,7 @@ class DiagnosticsExporter(QObject):
         if self._thread is not None:
             self._thread.join(timeout_s)
 
-    def _run(self, export_diagnostics, dest: Path) -> None:
+    def _run(self, export_diagnostics: Callable[[Path], Path], dest: Path) -> None:
         try:
             archive = export_diagnostics(dest)
         except Exception as exc:  # qualunque errore va mostrato, non perso
