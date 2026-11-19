@@ -28,7 +28,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Mapping
 
 from stemforge.engine import paths
 from stemforge.engine.errors import DeviceUnavailableError
@@ -206,8 +206,9 @@ _MAC_RECLAIMABLE = (
 )
 
 
-def _macos_available() -> int | None:
-    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+def _macos_available(libc: ctypes.CDLL | None = None) -> int | None:
+    if libc is None:
+        libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
     page = _sysctl_int(libc, "hw.pagesize")
     counts = [_sysctl_int(libc, name) for name in _MAC_RECLAIMABLE]
     if page and all(c is not None for c in counts):
@@ -227,20 +228,30 @@ def parse_meminfo(text: str) -> int | None:
     return None
 
 
-def _linux_available() -> int | None:
-    return parse_meminfo(Path("/proc/meminfo").read_text(encoding="ascii", errors="replace"))
+def _linux_available(meminfo: Path = Path("/proc/meminfo")) -> int | None:
+    return parse_meminfo(meminfo.read_text(encoding="ascii", errors="replace"))
 
 
-def available_memory_bytes(platform: str | None = None) -> int | None:
+MemoryReader = Callable[[], "int | None"]
+MEMORY_READERS: dict[str, MemoryReader] = {
+    "win32": _windows_available,
+    "darwin": _macos_available,
+    "linux": _linux_available,  # e ogni altro Unix con /proc/meminfo
+}
+
+
+def available_memory_bytes(
+    platform: str | None = None, readers: Mapping[str, MemoryReader] | None = None
+) -> int | None:
     """RAM che il job può usare senza far swappare la macchina; None se ignota.
 
     Un errore di lettura non è un guasto del job: senza il numero si
-    usano i blocchi di sempre (audio_io.BLOCK_LENGTH_S).
+    usano i blocchi di sempre (blocks.BLOCK_LENGTH_S). `readers` è
+    iniettabile per simulare un altro sistema senza toccare sys.platform.
     """
     platform = sys.platform if platform is None else platform
-    reader = {"win32": _windows_available, "darwin": _macos_available}.get(
-        platform, _linux_available
-    )
+    table = MEMORY_READERS if readers is None else readers
+    reader = table.get(platform, table["linux"])
     try:
         value = reader()
     except (OSError, AttributeError, TypeError, ValueError) as exc:
