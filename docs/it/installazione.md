@@ -15,7 +15,7 @@ file per ogni tipo di computer. Scegli la riga che corrisponde al tuo:
 | PC con Windows 10 (versione 1809 o successiva) o Windows 11, 64 bit | `StemForge-<versione>-windows-x64-setup.exe` | solo CPU |
 | PC con Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 o successive) | `StemForge-<versione>-linux-x86_64.AppImage` | solo CPU |
 
-**Non sai che Mac hai?** Menu  → **Informazioni su questo Mac**: se vedi
+**Non sai che Mac hai?** Menu Apple (la mela in alto a sinistra) → **Informazioni su questo Mac**: se vedi
 "Chip Apple M…" è Apple Silicon, se vedi "Processore Intel…" è Intel. La
 versione Intel funziona anche sui Mac Apple Silicon tramite Rosetta, ma
 più lenta e senza GPU: su un Mac Apple scegli il file `arm64`.

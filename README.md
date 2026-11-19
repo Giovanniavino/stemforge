@@ -52,7 +52,7 @@ contains one file per kind of computer. Pick the row that matches yours:
 | PC with Windows 10 (1809 or later) or Windows 11, 64-bit | `StemForge-<version>-windows-x64-setup.exe` | CPU only |
 | PC with Linux x64 (Ubuntu 20.04, Debian 11, Fedora 29 or later) | `StemForge-<version>-linux-x86_64.AppImage` | CPU only |
 
-Not sure which Mac you have? Apple menu  → **About This Mac**: "Chip Apple
+Not sure which Mac you have? Apple menu (the apple, top left) → **About This Mac**: "Chip Apple
 M…" means Apple Silicon, "Processor Intel…" means Intel. The Intel build
 also runs on Apple Silicon through Rosetta, but slower and without the GPU:
 take the `arm64` file.
@@ -354,16 +354,17 @@ to a file:
 
 ```bash
 # macOS
-/Applications/StemForge.app/Contents/MacOS/StemForge --selftest --offline --report ~/Desktop/selftest.txt
+/Applications/StemForge.app/Contents/MacOS/StemForge --selftest --offline --report ~/Desktop/selftest.json
 # Linux
-./StemForge-<version>-linux-x86_64.AppImage --selftest --offline --report ~/selftest.txt
+./StemForge-<version>-linux-x86_64.AppImage --selftest --offline --report ~/selftest.json
 ```
 
 On Windows (Command Prompt, from the installation folder — by default
 `%LOCALAPPDATA%\Programs\StemForge`):
-`StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.txt"`.
+`StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.json"`.
 Without `--offline` the self-test also checks the HTTPS connection to the
-model server.
+model server and runs a short real separation (downloading the models first
+if they are missing).
 
 ## Support and donations
 

@@ -12,7 +12,7 @@ computer: no account, no cloud, no telemetry.
 | PC with Windows 10 (1809 or later) or Windows 11, 64-bit | `StemForge-…-windows-x64-setup.exe` |
 | PC with Linux x64, glibc 2.28 or later (Ubuntu 20.04, Debian 11, Fedora 29 and later) | `StemForge-…-linux-x86_64.AppImage` |
 
-Not sure which Mac you have? Apple menu  → **About This Mac**: "Chip Apple
+Not sure which Mac you have? Apple menu (the apple, top left) → **About This Mac**: "Chip Apple
 M…" is Apple Silicon, "Processor Intel…" is Intel. The Intel file also runs
 on Apple Silicon through Rosetta, but slower and without the GPU: take the
 `arm64` one. Windows on ARM uses the x64 file through emulation.
@@ -82,7 +82,7 @@ computer: niente account, niente cloud, niente telemetria.
 | PC con Windows 10 (1809 o successiva) o Windows 11, 64 bit | `StemForge-…-windows-x64-setup.exe` |
 | PC con Linux x64, glibc 2.28 o successiva (Ubuntu 20.04, Debian 11, Fedora 29 e successive) | `StemForge-…-linux-x86_64.AppImage` |
 
-Non sai che Mac hai? Menu  → **Informazioni su questo Mac**: "Chip Apple
+Non sai che Mac hai? Menu Apple (la mela in alto a sinistra) → **Informazioni su questo Mac**: "Chip Apple
 M…" è Apple Silicon, "Processore Intel…" è Intel. Il file Intel gira anche
 sui Mac Apple Silicon tramite Rosetta, ma più lento e senza GPU: prendi
 quello `arm64`.

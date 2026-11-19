@@ -12,7 +12,7 @@ Silicon, your own GPU).
 | When | To | What is sent | What is received |
 |---|---|---|---|
 | First launch (and again only if a model file is missing or damaged) | `dl.fbaipublicfiles.com`, the official server of the Demucs models, run by Meta | an ordinary HTTPS download request for the model files: your IP address and a standard request header reach that server, as with any download | the model files (about 1 GB), each checked against a SHA-256 fixed in the code |
-| Only if you run `StemForge --selftest` **without** `--offline` | the same server | one HTTPS `HEAD` request, to check that the connection works | nothing is kept |
+| Only if you run `StemForge --selftest` **without** `--offline` (the diagnostics export always uses `--offline`) | the same server | one HTTPS `HEAD` request, to check that the connection works; then, if the models are not downloaded yet, the same model download as above, for a short test separation | the model files, if they were missing |
 
 Nothing about you, your computer or your songs is sent in either case.
 StemForge does not set cookies and has no identifier of any kind. The
@@ -72,7 +72,9 @@ CPU (o, sui Mac Apple Silicon, sulla tua GPU).
   download. Ogni file è controllato con uno SHA-256 fissato nel codice;
 - **solo se lanci** `StemForge --selftest` **senza** `--offline`: una
   richiesta HTTPS `HEAD` allo stesso server, per provare che la connessione
-  funziona.
+  funziona, e, se i modelli non sono ancora stati scaricati, lo stesso
+  download dei modelli, per una breve separazione di prova. L'esportazione
+  della diagnostica usa sempre `--offline`.
 
 In nessuno dei due casi viene mandato qualcosa su di te, sul tuo computer o
 sui tuoi brani. Dopo il download StemForge funziona offline per sempre:

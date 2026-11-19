@@ -59,16 +59,17 @@ l'esito in un file:
 
 ```bash
 # macOS
-/Applications/StemForge.app/Contents/MacOS/StemForge --selftest --offline --report ~/Desktop/selftest.txt
+/Applications/StemForge.app/Contents/MacOS/StemForge --selftest --offline --report ~/Desktop/selftest.json
 # Linux
-./StemForge-<versione>-linux-x86_64.AppImage --selftest --offline --report ~/selftest.txt
+./StemForge-<versione>-linux-x86_64.AppImage --selftest --offline --report ~/selftest.json
 ```
 
 Su Windows (Prompt dei comandi, dalla cartella di installazione — di solito
 `%LOCALAPPDATA%\Programs\StemForge`):
-`StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.txt"`.
+`StemForge.exe --selftest --offline --report "%USERPROFILE%\Desktop\selftest.json"`.
 Senza `--offline` il collaudo prova anche la connessione HTTPS al server
-dei modelli.
+dei modelli e fa una breve separazione vera (scaricando prima i modelli, se
+mancano).
 
 ## Chiedere aiuto
 
