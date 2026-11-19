@@ -48,10 +48,12 @@ def needed_bytes(job: SeparationJob, source: SourceAudio) -> int:
 
 
 def check_disk(
-    job: SeparationJob, source: SourceAudio, free: Callable[[Path], int] = free_bytes
+    job: SeparationJob, source: SourceAudio, free: Callable[[Path], int] | None = None
 ) -> None:
+    """InsufficientDiskError se lo spazio non basta. `free` si risolve a
+    ogni chiamata, così un test sostituisce preflight.free_bytes."""
     needed = needed_bytes(job, source)
-    available = free(job.out_dir)
+    available = (free or free_bytes)(job.out_dir)
     if available < needed:
         raise InsufficientDiskError(
             "err.disk_precheck",
