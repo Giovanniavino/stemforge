@@ -21,6 +21,8 @@
 #   FFMPEG_JOBS        parallelismo di make
 #   MINGW_PREFIX       prefisso del cross-compilatore win-x64 (x86_64-w64-mingw32-)
 #   FFMPEG_CC          compilatore C esplicito (es. per llvm-mingw)
+#   (meglio nomi corti dal PATH che percorsi assoluti: configure incide i
+#   propri argomenti nel binario, e "ffmpeg -version" li mostra all'utente)
 #   MANYLINUX_IMAGE    immagine per linux-x64 (fissarla per digest in CI)
 #   STEMFORGE_FFMPEG_ALLOW_HOST_GLIBC=1  SOLO sviluppo: linux-x64 fuori da
 #                      manylinux; il binario richiede la glibc dell'host

@@ -30,5 +30,8 @@ if [ ! -x "$DEST/usr/bin/x86_64-w64-mingw32-gcc-win32" ]; then
 fi
 # il link x86_64-w64-mingw32-gcc lo crea update-alternatives all'installazione:
 # estraendo a mano c'e' solo il nome con il suffisso della variante
-echo "export MINGW_PREFIX='$DEST/usr/bin/x86_64-w64-mingw32-'"
-echo "export FFMPEG_CC='$DEST/usr/bin/x86_64-w64-mingw32-gcc-win32'"
+ln -sf x86_64-w64-mingw32-gcc-win32 "$DEST/usr/bin/x86_64-w64-mingw32-gcc"
+# dal PATH e col prefisso di default, non per percorso assoluto: configure
+# incide i suoi argomenti nel binario ("ffmpeg -version", license_info),
+# e la cartella home dello sviluppatore non deve finirci
+echo "export PATH='$DEST/usr/bin':\"\$PATH\""
