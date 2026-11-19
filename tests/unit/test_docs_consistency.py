@@ -176,6 +176,40 @@ def test_funding_has_no_placeholder_link():
     assert not bad, f"FUNDING.yml contiene voci segnaposto attive: {bad}"
 
 
+def table_row_with(text: str, needle: str) -> str:
+    """La riga di tabella markdown che contiene `needle` ('' se non c'è)."""
+    return next((line for line in text.splitlines() if line.startswith("|") and needle in line), "")
+
+
+def test_phase0_cpu_only_profiles_are_declared():
+    # Fase 0 #2 e matrice: Windows, Linux e Mac Intel solo CPU nella v3
+    for doc, words in (("README.md", "CPU only"), ("docs/it/installazione.md", "solo CPU")):
+        text = _read(doc)
+        for suffix in ("-windows-x64-setup.exe", "-linux-x86_64.AppImage", "-macos-x86_64.dmg"):
+            assert words in table_row_with(text, suffix), f"{doc}: {suffix}"
+        assert words not in table_row_with(text, "-macos-arm64.dmg"), doc
+
+
+def test_table_row_helper_can_fail():
+    table = "| a | `x.exe` | CPU only |\n| b | `y.dmg` | GPU |\n"
+    assert "CPU only" in table_row_with(table, "x.exe")
+    assert "CPU only" not in table_row_with(table, "y.dmg")
+    assert table_row_with(table, "z.AppImage") == ""
+
+
+def test_phase0_decisions_are_reflected():
+    readme = _read("README.md")
+    # #3 nessuna firma per ora, #4 niente DirectML, #5 italiano e inglese
+    assert "not signed with a paid Apple or Microsoft certificate" in readme
+    assert "non è firmato" in _read("docs/it/installazione.md")
+    assert "DirectML" in readme and "DirectML" in _read("docs/it/problemi.md")
+    assert "English and Italian" in readme
+    assert "italiano e in inglese" in _read("docs/it/uso.md")
+    # #6 esportazione di kit fuori: la richiesta di funzione la rifiuta
+    assert "drum kits" in _read(".github/ISSUE_TEMPLATE/feature_request.yml")
+    assert "esportazione di kit" in _read("BUILD_SPEC.md").lower()
+
+
 def test_funding_check_can_fail():
     assert placeholder_funding_entries("github: <github-sponsors-username>\n")
     assert placeholder_funding_entries('custom: ["https://example.com/donate"]\n')

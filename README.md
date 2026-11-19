@@ -302,7 +302,10 @@ rate goes in, and the stems come out at that same rate.
 
 **Can it make drum kits, slices, loops, or remove reverb from a mix?** No:
 StemForge separates and delivers stems, and nothing else. Slicing, kits,
-effects and editing belong in your DAW or sampler.
+effects and editing belong in your DAW or sampler. (The one exception is
+the **Remove reverb** option on the *already separated vocals*, once its
+model is available: even then StemForge also writes the untouched
+version, `vocals_wet.wav`.)
 
 **Is it free?** Yes, and open source under the MIT license. If it is
 useful to you, see [Support and donations](#support-and-donations).
