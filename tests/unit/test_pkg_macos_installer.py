@@ -140,6 +140,13 @@ def test_build_lock_pins_the_build_tools_with_hashes():
     assert any(re.match(r"^pip==\d+(\.\d+)+ \\$", line) for line in requirements)
 
 
+def test_readme_for_the_user_is_plain_ascii():
+    # TextEdit e Quick Look indovinano la codifica di un .txt senza BOM: con
+    # il solo ASCII non c'e' niente da indovinare (accenti come e', a', o')
+    text = (ROOT / mi.INSTALLER_DIR / "LEGGIMI.txt").read_bytes()
+    assert text.isascii(), sorted({chr(byte) for byte in text if byte > 127})
+
+
 def test_main_reports_missing_ffmpeg(tmp_path, capsys, monkeypatch):
     monkeypatch.setattr(mi, "ROOT", _fake_root(tmp_path))
     assert mi.main(["--out", str(tmp_path / "z.zip")]) == 0

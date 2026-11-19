@@ -1,4 +1,4 @@
-STEMFORGE — INSTALLAZIONE SU MAC
+STEMFORGE - INSTALLAZIONE SU MAC
 ================================
 
 PER CHI INVIA: manda il file StemForge-Installer.zip COSI' COM'E',
@@ -26,7 +26,7 @@ gia' estratta e trasferita via Telegram/AirDrop arriva rotta.
      loro hash SHA-256, Python con la firma della Python Software
      Foundation.
    - L'app viene COSTRUITA sul tuo Mac: per questo macOS non la
-     bloccherà come "app di sviluppatore sconosciuto".
+     blocchera' come "app di sviluppatore sconosciuto".
 
 4. Alla fine trovi StemForge in /Applications.
    Al primo avvio scarica i modelli di separazione (~1 GB, una sola
@@ -47,11 +47,11 @@ anche un Mac mini del 2012), connessione a internet solo per
 l'installazione e il primo avvio. (Su Mac Apple Silicon funziona
 tramite Rosetta 2, ma il DMG "macos-arm64" e' molto piu' veloce.)
 
-Nota onesta sui tempi: su un Mac del 2012 la separazione in qualità
-massima può richiedere ore per un brano. L'app te lo dice PRIMA di
+Nota onesta sui tempi: su un Mac del 2012 la separazione in qualita'
+massima puo' richiedere ore per un brano. L'app te lo dice PRIMA di
 partire, con una stima calibrata sulla tua macchina; il preset
-"Bilanciata" è molto più rapido e la scorciatoia "Solo voce" è la più
-veloce di tutte.
+"Bilanciata" e' molto piu' rapido e la scorciatoia "Solo voce" e' la
+piu' veloce di tutte.
 
 USO IN DUE PAROLE
 -----------------
