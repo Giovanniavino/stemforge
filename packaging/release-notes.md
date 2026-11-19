@@ -26,7 +26,11 @@ often.
 
 - **Mac:** open the `.dmg` and drag StemForge into Applications.
 - **Windows:** run the `setup.exe`. No administrator rights needed.
-- **Linux:** `chmod +x StemForge-*.AppImage`, then run it.
+- **Linux:** `chmod +x StemForge-*.AppImage`, then run it. If it complains
+  about FUSE, see [the guide](https://github.com/Giovanniavino/stemforge#linux--the-appimage-doesnt-start).
+- **Mac mini and other old Intel Macs:** `StemForge-Installer.zip`, which
+  builds the app on your Mac, is still available as an alternative to the
+  Intel DMG ([how](https://github.com/Giovanniavino/stemforge#install)).
 
 On first launch StemForge downloads the separation models (about 1 GB, once,
 from `dl.fbaipublicfiles.com`), checks the GPU on Apple Silicon and measures
@@ -92,6 +96,9 @@ quello `arm64`.
 - **Mac:** apri il `.dmg` e trascina StemForge in Applicazioni.
 - **Windows:** esegui il `setup.exe`. Non servono diritti di amministratore.
 - **Linux:** `chmod +x StemForge-*.AppImage`, poi avvialo.
+- **Mac mini e Mac Intel vecchi:** resta disponibile anche
+  `StemForge-Installer.zip`, che costruisce l'app sul tuo Mac
+  ([come](https://github.com/Giovanniavino/stemforge/blob/main/docs/it/installazione.md#mac-mini-e-mac-intel-vecchi-linstaller-zip)).
 
 Al primo avvio l'app scarica i modelli di separazione (~1 GB, una volta
 sola), controlla la GPU sui Mac Apple Silicon e misura la velocità del
