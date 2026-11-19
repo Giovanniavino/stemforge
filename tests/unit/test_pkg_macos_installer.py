@@ -136,6 +136,8 @@ def test_build_lock_pins_the_build_tools_with_hashes():
     requirements = [line for line in lock.splitlines() if re.match(r"^[a-z]", line)]
     assert requirements and all(line.endswith("\\") for line in requirements)
     assert not any(line.startswith("pytest==") for line in requirements)
+    # l'installer aggiorna pip da qui, non con "--upgrade pip"
+    assert any(re.match(r"^pip==\d+(\.\d+)+ \\$", line) for line in requirements)
 
 
 def test_main_reports_missing_ffmpeg(tmp_path, capsys, monkeypatch):

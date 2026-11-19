@@ -121,7 +121,8 @@ def test_locked_install_is_hash_checked_binary_only_and_drops_pyav(tmp_path):
     log = _fake_build_env(tmp_path, pyav_installed=True)
     result = run_comune(tmp_path, "install_locked_deps && echo FATTO")
     assert result.returncode == 0 and "FATTO" in result.stdout, result.stdout + result.stderr
-    app_lock, build_lock, show, uninstall, own = log.read_text(encoding="utf-8").splitlines()
+    # gli strumenti (pip compreso, con l'hash) prima del lock dell'app
+    build_lock, app_lock, show, uninstall, own = log.read_text(encoding="utf-8").splitlines()
     assert app_lock.startswith("-m pip install --require-hashes --only-binary :all: "
                                "--no-binary antlr4-python3-runtime,demucs,dora-search -r ")
     assert app_lock.endswith("/requirements-macos-x86_64.lock")
@@ -135,6 +136,26 @@ def test_without_pyav_nothing_is_uninstalled(tmp_path):
     log = _fake_build_env(tmp_path, pyav_installed=False)
     assert run_comune(tmp_path, "install_locked_deps").returncode == 0
     assert not any("uninstall" in line for line in log.read_text(encoding="utf-8").splitlines())
+
+
+@pytest.mark.parametrize("script", ["Installa StemForge.command", "Aggiorna StemForge.command"])
+def test_no_unpinned_pip_and_rosetta_reexec_survives_set_u(script):
+    text = (ROOT / "packaging" / "installer" / script).read_text(encoding="utf-8")
+    sources = text + COMUNE.read_text(encoding="utf-8")
+    # pip si aggiorna solo dal lock di build, con l'hash
+    assert "--upgrade pip" not in sources and "-U pip" not in sources
+    # doppio click = nessun argomento: "$@" nudo sotto set -u rompe il bash 3.2 di macOS
+    reexec = [line for line in text.splitlines() if "exec arch -x86_64" in line]
+    assert reexec and all(line.rstrip().endswith('${1+"$@"}') for line in reexec)
+
+
+def test_reexec_idiom_passes_no_arguments_under_set_u(tmp_path):
+    # l'idioma si prova con la sh di qui; il bash 3.2 vero resta nella checklist
+    body = ('set -u; set --; set -- ${1+"$@"}; echo "n=$#"; '
+            'set -- "a b" c; set -- ${1+"$@"}; echo "n=$# 1=$1"')
+    result = run_comune(tmp_path, body)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines()[-2:] == ["n=0", "n=2 1=a b"]
 
 
 @pytest.mark.parametrize("script", ["Installa StemForge.command", "Aggiorna StemForge.command"])

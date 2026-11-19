@@ -3,11 +3,15 @@
 # PyInstaller e Pillow si installano con --require-hashes (BUILD_SPEC §2.2).
 # Versioni = packaging/requirements-build.txt senza pytest (sul Mac
 # dell'utente non si testa). setuptools serve anche a "pip install" dei
-# sorgenti di StemForge senza isolamento di build.
+# sorgenti di StemForge senza isolamento di build. pip e' fissato qui
+# perche' l'installer lo aggiorna da questo lock, con l'hash, invece che
+# con "pip install --upgrade pip" (26.3: la stessa degli ambienti di
+# sviluppo, legacy compreso).
 # Ogni pacchetto ha un wheel per cp311 su macOS <= 10.15 x86_64
-# (verificato su PyPI il 10-11-2026). Si rigenera con uv da qualsiasi
-# sistema, partendo dalle tre righe pyinstaller / pyinstaller-hooks-contrib /
-# pillow di requirements-build.txt:
+# (verificato su PyPI il 10-11-2026; pip e hash di tutto il file
+# ricontrollati il 19-11-2026). Si rigenera con uv da qualsiasi sistema,
+# partendo dalle tre righe pyinstaller / pyinstaller-hooks-contrib /
+# pillow di requirements-build.txt piu' "pip==26.3":
 #   MACOSX_DEPLOYMENT_TARGET=10.15 python -m uv pip compile build.in \
 #     --generate-hashes --no-annotate --no-header \
 #     --python-platform x86_64-apple-darwin --python-version 3.11
@@ -105,6 +109,9 @@ pillow==13.0.0 \
     --hash=sha256:fc481f742ccda20e9ed760b8f978dff50f2a4e9bc253ac167fb0a05b0783ef52 \
     --hash=sha256:ff3fe9eb621fbb9db4c4be33ab946f6bac5f98ab50ca8d3260503653656c961b \
     --hash=sha256:ffea6b2986a797c84b6d1d27d4f43e0b83c73fc16281a930891cd237cf0d08fe
+pip==26.3 \
+    --hash=sha256:6c36ae7da8695be67e3cd9f7d87919667ced53f57ce2ede75d89b5912ed2bc4c \
+    --hash=sha256:f3b60b20ffaadd4415ed7957212a38ac63fa4c5fa375bd0f4a797777940fad13
 pyinstaller==6.22.3 \
     --hash=sha256:020d4fe0627f5c73dfbcfad1a6578ef354d5fe4bdccd9d8e5a615528f5a45d2b \
     --hash=sha256:052f4a1cd4f81092ccb7a18fe8ebc9ecf832a5917317e39fb3775af4e959b253 \

@@ -40,7 +40,8 @@ fi
 
 if [ "$(uname -m)" = "arm64" ]; then
     if arch -x86_64 /usr/bin/true 2>/dev/null; then
-        exec arch -x86_64 /bin/sh "$SCRIPT_PATH" "$@"
+        # ${1+"$@"}: vedi Installa (bash 3.2, set -u, nessun argomento)
+        exec arch -x86_64 /bin/sh "$SCRIPT_PATH" ${1+"$@"}
     else
         die "serve Rosetta 2: esegui prima 'softwareupdate --install-rosetta'."
     fi

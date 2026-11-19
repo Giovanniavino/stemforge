@@ -56,6 +56,12 @@ install_locked_deps() {
         [ -f "$file" ] || die "file mancante: $file
 il pacchetto e' incompleto: riscarica lo zip ed estrailo TUTTO."
     done
+    # Prima gli strumenti: il lock di build fissa anche pip, che cosi' si
+    # aggiorna con l'hash verificato (mai un aggiornamento senza versione,
+    # che prenderebbe qualunque pip esca domani) prima di leggere il lock
+    # dell'app.
+    "$PYBIN" -m pip install --quiet --require-hashes --only-binary :all: -r "$build_lock" \
+        || die "strumenti di costruzione non installabili (probabile problema di rete: riprova)."
     # --only-binary :all: = questo Mac non deve MAI compilare codice nativo.
     "$PYBIN" -m pip install --require-hashes \
         --only-binary :all: --no-binary "$SDIST_ONLY" -r "$lock" \
@@ -63,8 +69,6 @@ il pacchetto e' incompleto: riscarica lo zip ed estrailo TUTTO."
 Se vedi errori di rete, controlla la connessione e rilancia.
 Se vedi 'Building wheel' o errori di compilazione, NON e' colpa tua:
 manda a chi ti ha dato questo pacchetto le ultime 30 righe qui sopra."
-    "$PYBIN" -m pip install --quiet --require-hashes --only-binary :all: -r "$build_lock" \
-        || die "strumenti di costruzione non installabili (probabile problema di rete: riprova)."
     # PyAV porta un FFmpeg GPLv3 (D9): il lock non lo contiene piu', ma un
     # ambiente creato prima puo' averlo ancora. Lo spec lo esclude comunque.
     if "$PYBIN" -m pip show av >/dev/null 2>&1; then

@@ -68,7 +68,9 @@ if [ "$(uname -m)" = "arm64" ]; then
     # ma piu' lenta e senza GPU: il DMG arm64 e' la scelta giusta (§9.1).
     if arch -x86_64 /usr/bin/true 2>/dev/null; then
         say "Mac Apple Silicon: proseguo tramite Rosetta 2 (il DMG arm64 sarebbe piu' veloce)"
-        exec arch -x86_64 /bin/sh "$SCRIPT_PATH" "$@"
+        # ${1+"$@"}: con set -u il bash 3.2 di macOS tratta un "$@" vuoto
+        # (il doppio click non passa argomenti) come variabile non definita
+        exec arch -x86_64 /bin/sh "$SCRIPT_PATH" ${1+"$@"}
     else
         die "serve Rosetta 2: esegui prima 'softwareupdate --install-rosetta' nel Terminale."
     fi
@@ -109,7 +111,6 @@ echo "    uso: $PYTHON ($("$PYTHON" -c 'import platform; print(platform.python_v
 say "Preparo l'ambiente di costruzione (puo' richiedere qualche minuto)"
 rm -rf "$BUILD_ENV"
 "$PYTHON" -m venv "$BUILD_ENV" || die "creazione dell'ambiente non riuscita."
-"$PYBIN" -m pip install --quiet --upgrade pip || die "aggiornamento di pip non riuscito."
 
 say "Scarico le dipendenze (~1 GB: possono volerci DECINE DI MINUTI, il progresso e' visibile qui sotto)"
 install_locked_deps
