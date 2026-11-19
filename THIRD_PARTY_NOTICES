@@ -41,6 +41,19 @@ How the licenses were verified (2026-11-10)
   strings of libsndfile_x64.dll (libsndfile 1.2.2, FLAC 1.4.3, libvorbis
   1.3.7, libopus 1.5.2, LAME 3.100), libiomp5md.dll in torch 2.10.0 and
   qtvirtualkeyboardplugin.dll in PySide6 6.7.3: no difference found.
+- Re-checked on 2026-11-19, again with no difference: installed metadata
+  of every pin of the win-x64 lock (modern) and of the legacy-intel lock
+  (legacy; ten legacy pins differ from the installed version and were
+  read from the PyPI JSON of the exact version, plus av 13.1.0); the
+  version strings inside libsndfile_x64.dll (libsndfile 1.2.2, libFLAC
+  1.4.3, libVorbis 20200704 = 1.3.7, libopus 1.5.2, LAME 3.100, mpg123
+  present) in both environments; Qt 6.7.3's avutil-59.dll ("LGPL version
+  2.1 or later", no --enable-gpl); qtvirtualkeyboardplugin.dll and
+  Qt6VirtualKeyboard.dll present in PySide6 6.7.3 and 6.4.3 (Windows);
+  Intel OpenMP in torch 2.10.0 (Windows); autocommand 2.2.2 (LGPLv3)
+  vendored in setuptools 84.2.1; the bootloader exception in
+  PyInstaller 6.22.3's COPYING.txt; OpenSSL 3.0.16 / 3.0.13 in the
+  CPython 3.12.10 / 3.11.9 builds of the dev environments.
 - tests/unit/test_docs_notices.py checks this file against the lock
   files: every pin of every distributed lock must appear in Part 2 with
   its version attributed to the right profile, and no Part 2 entry may
