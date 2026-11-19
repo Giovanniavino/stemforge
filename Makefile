@@ -20,6 +20,7 @@
 #   make check-min-os     macOS minimo di ogni binario dell'app (solo Mac)
 #   make selftest         --selftest sull'app costruita
 #   make package          pacchetto del profilo: DMG, installer Inno Setup, AppImage
+#   make selftest-package --selftest sul pacchetto come lo riceve l'utente
 #   make installer        zip "Installa StemForge.command" del Mac mini (§9.5)
 #   make notarize         firma Developer ID + notarizzazione (credenziali in env)
 
@@ -77,12 +78,15 @@ APP_EXE := $(APP_EXE_$(PROFILE))
 FROZEN_EXE ?= $(APP_EXE)
 SELFTEST_ARGS ?=
 REQUIRE_FFMPEG ?= 0
-ISCC ?= iscc
 PYTEST := "$(VPY)" -m pytest tests -q
+# famiglie su richiesta ancora vuote: pytest esce con 5 (nessun test), non e' un errore
+NONE_OK := || [ $$? -eq 5 ]
 
 .PHONY: dev test test-slow test-compat test-fuzz test-chaos test-soak test-frozen \
 	lock lock-check ffmpeg build build-release check-min-os selftest package \
 	package-legacy-intel package-mac-arm64 package-win-x64 package-linux-x64 \
+	selftest-package selftest-package-legacy-intel selftest-package-mac-arm64 \
+	selftest-package-win-x64 selftest-package-linux-x64 \
 	installer sign notarize clean profile
 
 profile:
@@ -90,7 +94,7 @@ profile:
 
 dev:
 	$(PY_BASE) -m venv $(VENV)
-	"$(VPY)" -m pip install --upgrade pip "setuptools>=69" wheel
+	"$(VPY)" -m pip install --upgrade pip "setuptools>=77" wheel
 	"$(VPY)" -m pip install --require-hashes --only-binary :all: \
 		--no-binary $(SDIST_ONLY) -r $(LOCK)
 	"$(VPY)" -m pip install --no-deps --no-build-isolation -e .
@@ -108,13 +112,13 @@ test-compat:
 	$(PYTEST) -m compat
 
 test-fuzz:
-	$(PYTEST) -m fuzz
+	$(PYTEST) -m fuzz $(NONE_OK)
 
 test-chaos:
-	$(PYTEST) -m chaos
+	$(PYTEST) -m chaos $(NONE_OK)
 
 test-soak:
-	$(PYTEST) -m soak -s
+	$(PYTEST) -m soak -s $(NONE_OK)
 
 test-frozen:
 	@test -e "$(FROZEN_EXE)" || { echo "app impacchettata assente: $(FROZEN_EXE) (make build, o FROZEN_EXE=...)" >&2; exit 1; }
@@ -141,6 +145,7 @@ build-release:
 	$(MAKE) build REQUIRE_FFMPEG=1
 
 check-min-os:
+	$(if $(MACOS_MIN_$(PROFILE)),,$(error check-min-os vale solo per legacy-intel e mac-arm64))
 	"$(VPY)" packaging/macos/check_min_os.py $(DIST)/StemForge.app $(MACOS_MIN_$(PROFILE)) \
 		--arch $(DMG_ARCH_$(PROFILE))
 
@@ -149,17 +154,36 @@ selftest:
 
 package: package-$(PROFILE)
 
-package-legacy-intel package-mac-arm64:
-	sh packaging/macos/make_dmg.sh $(DIST)/StemForge.app \
-		dist/StemForge-$(VERSION)-macos-$(DMG_ARCH_$(PROFILE)).dmg
+DMG := dist/StemForge-$(VERSION)-macos-$(DMG_ARCH_$(PROFILE)).dmg
+SETUP := dist/StemForge-$(VERSION)-windows-x64-setup.exe
+APPIMAGE := dist/StemForge-$(VERSION)-linux-x86_64.AppImage
 
+package-legacy-intel package-mac-arm64:
+	sh packaging/macos/make_dmg.sh $(DIST)/StemForge.app $(DMG)
+
+# icona, versione e misura dei percorsi lunghi: packaging/windows/build_installer.py
 package-win-x64:
-	"$(VPY)" packaging/windows/make_ico.py
-	"$(ISCC)" /DAppVersion=$(VERSION) packaging/windows/stemforge.iss
+	"$(VPY)" packaging/windows/build_installer.py
 
 # dentro manylinux_2_28 (CI) o con packaging/linux/rootless_container.py
 package-linux-x64:
 	STEMFORGE_REQUIRE_FFMPEG=$(REQUIRE_FFMPEG) bash packaging/linux/build_appimage.sh
+
+selftest-package: selftest-package-$(PROFILE)
+
+# il DMG montato in sola lettura, come lo apre l'utente
+selftest-package-legacy-intel selftest-package-mac-arm64:
+	@mnt="$$(mktemp -d)" && hdiutil attach "$(DMG)" -nobrowse -readonly -mountpoint "$$mnt" && \
+	"$(VPY)" packaging/ci/run_selftest.py "$$mnt/StemForge.app/Contents/MacOS/StemForge" \
+		$(WORK)/selftest-dmg.json $(SELFTEST_ARGS); rc=$$?; hdiutil detach "$$mnt" -force; exit $$rc
+
+# installa in silenzio, collauda l'app installata, disinstalla
+selftest-package-win-x64:
+	"$(VPY)" packaging/ci/verify_windows_installer.py "$(SETUP)" $(WORK)/installer.json
+
+selftest-package-linux-x64:
+	APPIMAGE_EXTRACT_AND_RUN=1 "$(VPY)" packaging/ci/run_selftest.py "$(APPIMAGE)" \
+		$(WORK)/selftest-appimage.json $(SELFTEST_ARGS)
 
 # pacchetto inviabile all'utente del Mac mini: zip con doppio-click che
 # costruisce l'app nativamente sul suo Mac (funziona anche dal dev-box)
@@ -171,8 +195,7 @@ sign: build
 
 # distribuzione a terzi: Developer ID + gate licenze (§9.3)
 notarize:
-	sh packaging/notarize.sh $(DIST)/StemForge.app \
-		dist/StemForge-$(VERSION)-macos-$(DMG_ARCH_$(PROFILE)).dmg
+	PYTHON="$(VPY)" sh packaging/notarize.sh $(DIST)/StemForge.app $(DMG)
 
 clean:
 	rm -rf $(WORK) $(DIST) src/stemforge.egg-info
