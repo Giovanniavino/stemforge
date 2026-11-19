@@ -30,6 +30,7 @@ from PySide6.QtWidgets import QApplication, QWidget
 from stemforge.ui import conventions, drop_zone, theme
 
 _MAX_CHAIN = 60  # più controlli di così vuol dire un giro di Tab senza fine
+SCREEN_CONTROLS = {"drop": 3, "picker": 23, "progress": 1, "result": 4}
 
 
 @pytest.fixture()
@@ -115,8 +116,10 @@ def test_tab_visits_every_control_in_reading_order(all_derived, window, qapp, tm
         names = [w.accessibleName() or type(w).__name__ for w in chain]
         assert chain == expected, f"{screen}: {names}"
         seen[screen] = len(chain)
-    # drop: file, lingua, diagnostica; scelta: 21 con le fisarmoniche aperte
-    assert seen == {"drop": 3, "picker": 21, "progress": 1, "result": 4}
+    # drop: file, lingua, diagnostica. Scelta, con le fisarmoniche aperte:
+    # Indietro, Tutto, Solo voce, 7 strumenti, 2 fisarmoniche con 5 + 3
+    # caselle, qualità, formato, Separa = 23. Risultato: lista e 3 pulsanti
+    assert seen == SCREEN_CONTROLS
 
 
 def test_each_screen_starts_where_the_next_step_is(window, tmp_path):
@@ -282,4 +285,4 @@ def test_focus_is_always_visible(all_derived, window, qapp, themed, tmp_path, pa
             assert control.hasFocus(), f"{screen}: {control.accessibleName()}"
             assert _image(control) != idle, f"{screen}: focus invisibile su {control.accessibleName()!r}"
             checked += 1
-    assert checked == 29
+    assert checked == sum(SCREEN_CONTROLS.values())  # nessuna schermata saltata
