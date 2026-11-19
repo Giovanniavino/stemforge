@@ -1,0 +1,60 @@
+name: FFmpeg LGPL del profilo
+description: >
+  Il FFmpeg minimo LGPL di BUILD_SPEC D9, costruito da
+  packaging/ffmpeg/build.sh <profilo> (contratto dell'area FFmpeg,
+  packaging/ffmpeg/README.md) e messo in cache per hash di script e
+  sorgente: compilarlo costa minuti, ricontrollarne la licenza secondi.
+  Uscita in packaging/ffmpeg/out/<profilo>/.
+
+inputs:
+  profile:
+    description: legacy-intel | mac-arm64 | linux-x64 | win-x64 (win-x64 si cross-compila su Ubuntu)
+    required: true
+
+outputs:
+  dir:
+    description: Cartella con ffmpeg[.exe], COPYING.LGPLv2.1 e SOURCE.txt
+    value: packaging/ffmpeg/out/${{ inputs.profile }}
+
+runs:
+  using: composite
+  steps:
+    # Stesso hash = stesso sorgente (SOURCE_SHA256), stessa configurazione
+    # (build.sh): il binario in cache e' quello che build.sh produrrebbe.
+    - name: Cache
+      id: cache
+      uses: actions/cache@v6
+      with:
+        path: packaging/ffmpeg/out/${{ inputs.profile }}
+        key: ffmpeg-lgpl-v1-${{ inputs.profile }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('packaging/ffmpeg/VERSION', 'packaging/ffmpeg/SOURCE_SHA256', 'packaging/ffmpeg/*.sh') }}
+
+    - name: mingw-w64 (win-x64)
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.profile == 'win-x64'
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq --no-install-recommends gcc-mingw-w64-x86-64-win32
+
+    - name: Compila
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        PROFILE: ${{ inputs.profile }}
+      # $RUNNER_TEMP e non runner.temp: dentro un container il secondo e'
+      # il percorso dell'host. configure non accetta spazi: qui non ce ne sono.
+      run: FFMPEG_WORK_DIR="$RUNNER_TEMP/ffmpeg-build" bash packaging/ffmpeg/build.sh "$PROFILE"
+
+    - name: Licenza del binario in cache
+      if: steps.cache.outputs.cache-hit == 'true'
+      shell: bash
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        out="packaging/ffmpeg/out/$PROFILE"
+        if [ "$PROFILE" = win-x64 ]; then
+          # su Ubuntu l'exe non si esegue: controllo sulle stringhe, quello
+          # a runtime lo ripete il job Windows
+          bash packaging/ffmpeg/check_license.sh --static "$out/ffmpeg.exe"
+        else
+          bash packaging/ffmpeg/check_license.sh "$out/ffmpeg"
+        fi

@@ -1,0 +1,45 @@
+name: Firma Authenticode
+description: >
+  Firma con signtool i file dati (BUILD_SPEC §9.3). La chiama release.yml
+  solo se nei secrets c'e' il certificato: senza, l'installer resta non
+  firmato e SmartScreen avvisa, come spiega la documentazione.
+
+inputs:
+  files:
+    description: File da firmare, uno per riga
+    required: true
+  pfx-base64:
+    description: Il certificato .pfx in base64 (secret WINDOWS_CERT_PFX_BASE64)
+    required: true
+  password:
+    description: La sua password (secret WINDOWS_CERT_PASSWORD)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: signtool
+      shell: pwsh
+      env:
+        FILES: ${{ inputs.files }}
+        PFX_BASE64: ${{ inputs.pfx-base64 }}
+        PFX_PASSWORD: ${{ inputs.password }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        # il signtool dell'SDK piu' recente installato sul runner
+        $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+          Sort-Object { [version]$_.Directory.Parent.Name } | Select-Object -Last 1
+        if (-not $signtool) { throw 'signtool.exe non trovato nel Windows SDK del runner' }
+        $pfx = Join-Path $env:RUNNER_TEMP 'stemforge-cert.pfx'
+        [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:PFX_BASE64))
+        try {
+          foreach ($file in ($env:FILES -split "`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+            & $signtool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com `
+              /f $pfx /p $env:PFX_PASSWORD $file
+            if ($LASTEXITCODE -ne 0) { throw "firma non riuscita: $file" }
+            & $signtool.FullName verify /pa $file
+            if ($LASTEXITCODE -ne 0) { throw "firma non valida: $file" }
+          }
+        } finally {
+          Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+        }
