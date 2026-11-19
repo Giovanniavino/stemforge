@@ -8,11 +8,14 @@ eseguendo entrambe le versioni (tests/compat/ lo ripete a ogni giro):
 - ``torch.load``: il default di ``weights_only`` e' cambiato (False nella
   2.2.2, True dalla 2.6) e solo dalla 2.5 l'elenco delle classi ammesse
   si estende con ``torch.serialization.safe_globals``. Differenza reale:
-  si passa sempre per ``load_checkpoint``.
-- ``torch.hub.load_state_dict_from_url`` (lo chiama demucs): stessa firma
-  e ``weights_only=False`` di default in entrambe. Uguale, ma sblocca il
-  pickle completo e verifica l'hash solo al download, non a ogni avvio:
-  per questo esiste ``load_checkpoint``.
+  si passa sempre per ``load_checkpoint``. Colpisce anche demucs:
+  ``demucs.states.load_model(<percorso>)`` chiama ``torch.load`` senza
+  ``weights_only`` e con torch 2.10 rifiuta i suoi stessi checkpoint.
+- ``torch.hub.load_state_dict_from_url`` (lo chiama il repo remoto di
+  demucs): stessa firma e ``weights_only=False`` di default in entrambe.
+  Uguale, ma fa il pickle completo e verifica l'hash solo al download, non
+  a ogni avvio: per questo ``get_demucs_model`` lo sostituisce con
+  ``download_url_to_file`` + ``load_checkpoint``.
 - ``torchaudio.functional.resample`` con ``sinc_interp_kaiser``, hook di
   forward, ``torch.backends.mps``, ``set_grad_enabled``/``inference_mode``,
   ``from_numpy`` con numpy 1 e 2: identici, lo provano i test ``compat``.
@@ -150,3 +153,49 @@ def load_checkpoint(path: Path, allowed: tuple[str, ...] = DEMUCS_SAFE_GLOBALS) 
     # torch 2.2.2: l'elenco non si estende e i pesi demucs contengono
     # classi Python. Pickle completo, ma solo di un file con l'hash giusto.
     return torch.load(path, map_location="cpu", weights_only=False)
+
+
+class VerifiedRemoteRepo:
+    """Il repo remoto di demucs (``demucs.repo.RemoteRepo``) con i pesi
+    caricati da ``load_checkpoint`` invece che dal pickle completo di
+    ``torch.hub.load_state_dict_from_url``. Stessa cartella e stessi nomi
+    di torch hub: i pesi gia' scaricati si riusano."""
+
+    def __init__(self, urls: dict[str, str], checkpoints: Path) -> None:
+        self._urls = urls
+        self._checkpoints = checkpoints
+
+    def has_model(self, sig: str) -> bool:
+        return sig in self._urls
+
+    def get_model(self, sig: str) -> Any:
+        import torch
+        from demucs.repo import ModelLoadingError
+        from demucs.states import load_model
+
+        if sig not in self._urls:
+            raise ModelLoadingError(f"nessun modello demucs con firma {sig}")
+        url = self._urls[sig]
+        path = self._checkpoints / url.rsplit("/", 1)[-1]
+        if not path.is_file():
+            self._checkpoints.mkdir(parents=True, exist_ok=True)
+            # scrive su un temporaneo e rinomina solo se l'hash torna
+            torch.hub.download_url_to_file(url, str(path), hash_prefix=expected_hash_prefix(path))
+        return load_model(load_checkpoint(path))
+
+
+def get_demucs_model(name: str) -> Any:
+    """``demucs.pretrained.get_model(name)`` per i modelli ufficiali, con
+    ogni checkpoint verificato e caricato da ``load_checkpoint``. I pesi
+    stanno in ``<torch.hub.get_dir()>/checkpoints``, come prima."""
+    import torch
+    from demucs import pretrained
+    from demucs.repo import AnyModelRepo, BagOnlyRepo
+
+    # funzione privata di demucs, stabile perche' demucs e' fissato a 4.0.1
+    urls = pretrained._parse_remote_files(pretrained.REMOTE_ROOT / "files.txt")
+    model_repo = VerifiedRemoteRepo(urls, Path(torch.hub.get_dir()) / "checkpoints")
+    bag_repo = BagOnlyRepo(pretrained.REMOTE_ROOT, model_repo)
+    model = AnyModelRepo(model_repo, bag_repo).get_model(name)
+    model.eval()
+    return model

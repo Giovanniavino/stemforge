@@ -123,6 +123,7 @@ def system_checkpoints(monkeypatch: pytest.MonkeyPatch) -> Path:
     return paths.models_dir() / "checkpoints"
 
 
+@pytest.mark.slow  # pesi veri, ~80 MB l'uno: fuori dal giro veloce, dentro -m compat
 @pytest.mark.parametrize("name", FT_CHECKPOINTS)
 def test_real_htdemucs_ft_weights_build_the_model(name, system_checkpoints):
     path = system_checkpoints / name
@@ -136,6 +137,7 @@ def test_real_htdemucs_ft_weights_build_the_model(name, system_checkpoints):
     assert model.sources == ["drums", "bass", "other", "vocals"]
 
 
+@pytest.mark.slow
 def test_real_weights_are_the_same_tensors_as_a_full_load(system_checkpoints):
     present = [system_checkpoints / n for n in FT_CHECKPOINTS if (system_checkpoints / n).is_file()]
     if not present:
