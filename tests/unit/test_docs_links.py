@@ -145,3 +145,76 @@ def test_checker_reports_missing_files_and_anchors(tmp_path: Path):
 
 def test_duplicate_headings_get_numbered_anchors():
     assert anchors_of("# Same\n## Same\n") == {"same", "same-1"}
+
+
+# Le note di release e i template delle issue si leggono fuori dal
+# repository (pagina Releases, form di GitHub): lì i link al progetto sono
+# assoluti, ma puntano comunque a file e titoli di questo checkout.
+REPO_URL = "https://github.com/Giovanniavino/stemforge"
+REPO_LINK = re.compile(re.escape(REPO_URL) + r"""([^\s)"'\]>]*)""")
+REPO_DOCS = ("packaging/release-notes.md", ".github/ISSUE_TEMPLATE")
+# pagine di GitHub che non sono file del repository
+GITHUB_PAGES = ("/issues", "/releases", "/pulls", "/discussions")
+
+
+def _repo_link_target(suffix: str) -> tuple[str, str] | None:
+    """'/blob/main/docs/x.md#a' -> ('docs/x.md', 'a'); None se non è un file."""
+    path, _, anchor = suffix.partition("#")
+    if path.startswith(GITHUB_PAGES):
+        return None
+    if path in ("", "/"):
+        # '#readme' è l'ancora che GitHub dà al riquadro del README
+        return "README.md", "" if anchor == "readme" else anchor
+    match = re.match(r"^/(?:blob|tree)/main/(.+)$", path)
+    return (match.group(1), anchor) if match else ("<non un file>" + path, anchor)
+
+
+def broken_repo_links(text: str, root: Path = ROOT) -> list[str]:
+    problems: list[str] = []
+    for suffix in REPO_LINK.findall(text):
+        target = _repo_link_target(suffix)
+        if target is None:
+            continue
+        relative, anchor = target
+        destination = root / relative
+        if not destination.exists():
+            problems.append(f"{REPO_URL}{suffix}: il file non esiste")
+        elif anchor and destination.suffix == ".md":
+            if anchor not in anchors_of(destination.read_text(encoding="utf-8")):
+                problems.append(f"{REPO_URL}{suffix}: nessun titolo con ancora #{anchor}")
+    return problems
+
+
+def _repo_doc_files() -> list[Path]:
+    files: list[Path] = []
+    for relative in REPO_DOCS:
+        path = ROOT / relative
+        files.extend(sorted(path.glob("*.yml")) if path.is_dir() else [path])
+    return files
+
+
+def test_absolute_links_to_the_repository_resolve():
+    files = _repo_doc_files()
+    assert len(files) >= 3, files
+    report = {
+        str(path.relative_to(ROOT)): problems
+        for path in files
+        if (problems := broken_repo_links(path.read_text(encoding="utf-8")))
+    }
+    assert not report, f"link al repository rotti: {report}"
+
+
+def test_repo_link_checker_can_fail(tmp_path: Path):
+    (tmp_path / "README.md").write_text("# The app won't open\n", encoding="utf-8")
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "a.md").write_text("# Titolo\n", encoding="utf-8")
+    text = (
+        f"[ok]({REPO_URL}#the-app-wont-open) [ok]({REPO_URL}/blob/main/docs/a.md#titolo)\n"
+        f"[ok]({REPO_URL}#readme)\n"
+        f"url: {REPO_URL}/issues/new/choose\n"
+        f"[bad]({REPO_URL}#nope) [gone]({REPO_URL}/blob/main/docs/b.md)\n"
+    )
+    assert broken_repo_links(text, tmp_path) == [
+        f"{REPO_URL}#nope: nessun titolo con ancora #nope",
+        f"{REPO_URL}/blob/main/docs/b.md: il file non esiste",
+    ]
