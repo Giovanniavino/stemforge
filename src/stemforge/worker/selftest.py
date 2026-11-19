@@ -284,3 +284,23 @@ def run(
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     _print_report(checks, ok)
     return 0 if ok else 1
+
+
+def parse_args(args: list[str]) -> tuple[Path | None, bool]:
+    """`[--report FILE] [--offline]` -> (report, network)."""
+    report: Path | None = None
+    if "--report" in args:
+        index = args.index("--report")
+        if index + 1 < len(args):
+            report = Path(args[index + 1])
+    return report, "--offline" not in args
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Dai sorgenti: `python -m stemforge.worker.selftest [--report F] [--offline]`."""
+    report, network = parse_args(sys.argv[1:] if argv is None else argv)
+    return run(report, network=network)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

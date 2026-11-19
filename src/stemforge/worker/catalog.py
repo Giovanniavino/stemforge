@@ -106,6 +106,15 @@ IT: dict[str, str] = {
     "phase.writing": "Scrittura stem",
     "phase.download": "Scarico il modello {name}",
     "phase.calibrate": "Misuro la velocità di questo computer per darti stime oneste",
+    # -- diagnostica (§9.9) ----------------------------------------------------
+    "diag.readme": (
+        "Diagnostica di StemForge {version}.\n\n"
+        "Contiene: il log dell'app, la versione, il sistema, l'esito del "
+        "collaudo (--selftest --offline), i verdetti dei dispositivi di "
+        "calcolo e la calibrazione. Nessun file audio.\n\n"
+        "Il log contiene i NOMI dei brani che hai elaborato. Aprilo e "
+        "decidi tu se e a chi mandarlo: StemForge non spedisce nulla da solo.\n"
+    ),
     # -- CLI -------------------------------------------------------------------
     "cli.done": "fatto: {path}",
     "cli.warning": "avviso: {message}",
@@ -207,6 +216,14 @@ EN: dict[str, str] = {
     "phase.writing": "Writing stems",
     "phase.download": "Downloading the {name} model",
     "phase.calibrate": "Measuring this computer's speed to give you honest estimates",
+    "diag.readme": (
+        "StemForge {version} diagnostics.\n\n"
+        "Contains: the app log, the version, the system, the result of the "
+        "self-test (--selftest --offline), the compute device verdicts and "
+        "the calibration. No audio files.\n\n"
+        "The log contains the NAMES of the tracks you processed. Open it and "
+        "decide whether to send it and to whom: StemForge never sends anything by itself.\n"
+    ),
     "cli.done": "done: {path}",
     "cli.warning": "warning: {message}",
     "cli.error": "error on {name}: {message}",
