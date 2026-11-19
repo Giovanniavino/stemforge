@@ -151,6 +151,8 @@ def test_oci_layer_cannot_escape_the_rootfs(tmp_path: Path) -> None:
     ("ubuntu:20.04", ("docker.io", "library/ubuntu", "20.04")),
     ("quay.io/pypa/manylinux_2_28_x86_64@sha256:ab", ("quay.io", "pypa/manylinux_2_28_x86_64", "sha256:ab")),
     ("quay.io/pypa/manylinux_2_28_x86_64", ("quay.io", "pypa/manylinux_2_28_x86_64", "latest")),
+    # tag e digest insieme (cosi' si fissano le immagini in CI): vale il digest
+    ("ubuntu:20.04@sha256:cd", ("docker.io", "library/ubuntu", "sha256:cd")),
 ])
 def test_image_references(image: str, expected: tuple[str, str, str]) -> None:
     assert rootless._split_image(image) == expected

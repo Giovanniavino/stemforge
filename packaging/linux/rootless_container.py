@@ -49,7 +49,10 @@ def _split_image(image: str) -> tuple[str, str, str]:
         image = "docker.io/" + (image if "/" in image else "library/" + image)
     registry, _, rest = image.partition("/")
     if "@" in rest:
+        # "nome:tag@sha256:..." e' un riferimento valido: vale il digest,
+        # il tag e' solo un promemoria (e nel percorso dell'API darebbe 404)
         repo, _, ref = rest.partition("@")
+        repo = repo.partition(":")[0]
     else:
         repo, _, ref = rest.rpartition(":") if ":" in rest else (rest, "", "latest")
     return registry, repo, ref

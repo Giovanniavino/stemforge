@@ -73,7 +73,9 @@ run_selftest() {
     local status=0
     QT_QPA_PLATFORM=offscreen "${launch[@]}" --selftest --report "$REPORT" "$@" || status=$?
     [ -f "$REPORT" ] || die "nessun report prodotto (uscita $status)"
-    grep -Eq '"ok": true' "$REPORT" || die "selftest fallito (uscita $status), vedi $REPORT"
+    # la chiave di primo livello (json.dumps indent=2), non un "ok" dentro
+    # il dettaglio di un controllo: qui non c'e' Python per leggere il JSON
+    grep -Eq '^  "ok": true,$' "$REPORT" || die "selftest fallito (uscita $status), vedi $REPORT"
     [ "$status" -eq 0 ] || die "selftest riuscito ma uscita $status"
     log "COLLAUDO RIUSCITO"
 }
