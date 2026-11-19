@@ -141,6 +141,18 @@ quella di m4a/aac/alac, se lo zip non contiene FFmpeg.
 
 Poi esegui la **sezione C** con questa installazione.
 
+### B3. Facoltativo: lo zip via Rosetta (solo se avanza tempo)
+
+Non è il percorso consigliato su Apple Silicon, ma lo zip promette di
+funzionare anche qui (LEGGIMI). Fallo per ultimo: sostituisce l'app
+arm64 in `/Applications`; alla fine rimetti quella del DMG.
+
+- [ ] Doppio click su `Installa StemForge.command`: compare "Mac Apple
+      Silicon: proseguo tramite Rosetta 2" e lo script **continua**. Un
+      errore `unbound variable` subito dopo quella riga è un difetto.
+- [ ] Dopo l'installazione, Monitoraggio Attività dice `Intel` per
+      StemForge (è la build legacy-intel), e il selftest riesce.
+
 ## C. Separazione e consegna alla DAW (su ogni installazione)
 
 - [ ] **C1.** Trascina `~/StemForgeProva/prova.wav` sulla finestra e
