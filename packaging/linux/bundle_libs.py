@@ -31,6 +31,7 @@ qui sono i nostri; `readelf` viene da binutils.
 
 from __future__ import annotations
 
+import filecmp
 import os
 import re
 import shutil
@@ -46,6 +47,9 @@ _NEEDED_LINE = re.compile(r"\(NEEDED\)\s+Shared library: \[([^\]]+)\]")
 _SONAME_LINE = re.compile(r"\(SONAME\)\s+Library soname: \[([^\]]+)\]")
 # le carica l'interprete o il bootloader, non un DT_NEEDED: mai orfane
 _PYTHON_OWNED = re.compile(r"(\.cpython-\d+.*\.so|\.abi3\.so.*|^libpython\d.*\.so.*)$")
+# GPL senza eccezioni: nel pacchetto MIT non possono entrare (§11.11).
+# libreadline la portava il modulo readline di CPython (build_python.sh)
+_GPL_ONLY = re.compile(r"^lib(readline|history)\.so")
 _VERSION_REF = re.compile(r"Name: (GLIBC|GLIBCXX|CXXABI)_(\d+(?:\.\d+)*)\b")
 _SYSTEM_LIB_DIRS = (Path("/usr/lib64"), Path("/lib64"), Path("/usr/lib"))
 # Il minimo promesso: glibc 2.28 (§2.1) e il libstdc++ di GCC 8 (Fedora 29,
@@ -176,11 +180,25 @@ def prune_orphans(bundle: Path) -> list[str]:
     orphans = find_orphans(infos, candidates)
     for path in orphans:
         path.unlink()
-    # i collegamenti di PyInstaller verso un orfano resterebbero appesi
-    dangling = [path for path in internal.iterdir() if path.is_symlink() and not path.exists()]
-    for path in dangling:
+    return sorted(str(path.relative_to(bundle)) for path in [*orphans, *_leftovers(internal)])
+
+
+def _leftovers(internal: Path) -> list[Path]:
+    """Cio' che resta appeso a una libreria tolta: i symlink di PyInstaller
+    e le firme FIPS ".libX.so.N.hmac" che gnutls e libgcrypt si portano."""
+    stale = [
+        path for path in internal.iterdir()
+        if (path.is_symlink() and not path.exists())
+        or (path.name.startswith(".") and path.name.endswith(".hmac")
+            and not (internal / path.name[1:-len(".hmac")]).exists())
+    ]
+    for path in stale:
         path.unlink()
-    return sorted(str(path.relative_to(bundle)) for path in [*orphans, *dangling])
+    return stale
+
+
+def gpl_only(bundle: Path) -> list[str]:
+    return sorted(name for name in bundled_sonames(bundle) if _GPL_ONLY.search(name))
 
 
 @dataclass
@@ -254,13 +272,17 @@ def add_system_libs(bundle: Path, patterns: list[re.Pattern[str]]) -> list[str]:
     raise SystemExit(f"bundle_libs: nessun punto fisso dopo {_MAX_ROUNDS} giri")
 
 
-def rpm_origin(name: str) -> str:
-    """Pacchetto e licenza della copia di sistema, se c'e' rpm (manylinux)."""
+def rpm_origin(path: Path) -> str:
+    """Pacchetto e licenza della copia di sistema, se e' proprio quella.
+
+    Lo stesso nome non basta: l'immagine ha una libpython3.12 di AlmaLinux
+    accanto alla nostra (build_python.sh), e il report la dava per sua.
+    """
     if shutil.which("rpm") is None:
         return "?"
     for directory in _SYSTEM_LIB_DIRS:
-        candidate = directory / name
-        if candidate.exists():
+        candidate = directory / path.name
+        if candidate.exists() and filecmp.cmp(candidate, path.resolve(), shallow=False):
             proc = subprocess.run(
                 ["rpm", "-qf", "--qf", "%{NAME}-%{VERSION} [%{LICENSE}]", str(candidate)],
                 capture_output=True, text=True, check=False,
@@ -273,9 +295,9 @@ def rpm_origin(name: str) -> str:
 def system_libs_report(bundle: Path, added: list[str], removed: list[str], orphans: list[str]) -> str:
     """Le librerie in _internal/ (non dentro una wheel), con origine e licenza."""
     lines = ["# librerie nella radice di _internal/ (per THIRD_PARTY_NOTICES)"]
-    for path in sorted((bundle / "_internal").glob("*.so*")):
+    for path in sorted((bundle / "_internal").glob("[!.]*.so*")):
         mark = "aggiunta" if path.name in added else "PyInstaller"
-        lines.append(f"{path.name}\t{mark}\t{rpm_origin(path.name)}")
+        lines.append(f"{path.name}\t{mark}\t{rpm_origin(path)}")
     lines.append("# tolte perche' dell'host (host_libs.txt)")
     lines.extend(removed)
     lines.append("# tolte perche' le chiedeva solo una libreria dell'host")
@@ -293,6 +315,8 @@ def main(argv: list[str]) -> int:
     removed = prune_host_libs(bundle, patterns)
     orphans = prune_orphans(bundle)
     added = add_system_libs(bundle, patterns)
+    if forbidden := gpl_only(bundle):
+        raise SystemExit(f"bundle_libs: librerie solo GPL nel pacchetto MIT: {', '.join(forbidden)}")
     report = system_libs_report(bundle, added, removed, orphans)
     print(report, end="")
     if len(argv) == 4:

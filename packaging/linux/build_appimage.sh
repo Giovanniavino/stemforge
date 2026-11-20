@@ -122,13 +122,20 @@ make_venv() {
 
 run_pyinstaller() {
     log "PyInstaller (profilo linux-x64)"
+    # PyInstaller cerca la libpython con ldd sul python del venv, un
+    # symlink: li' $ORIGIN/../lib non porta al nostro prefisso e ldd
+    # risolve la libpython3.12 di sistema dell'immagine, se c'e' (build del
+    # 20-11-2026: entrata la 3.12.15 di AlmaLinux accanto alla stdlib
+    # 3.12.16). LD_LIBRARY_PATH gli fa trovare la nostra.
     (
         cd "$REPO"
-        STEMFORGE_PROFILE=linux-x64 "$VENV/bin/python" -m PyInstaller \
+        STEMFORGE_PROFILE=linux-x64 LD_LIBRARY_PATH="$PYTHON_PREFIX/lib" "$VENV/bin/python" -m PyInstaller \
             packaging/stemforge.spec --noconfirm --clean \
             --distpath "$WORK/dist" --workpath "$WORK/pyinstaller"
     )
     [ -x "$WORK/dist/StemForge/StemForge" ] || die "PyInstaller non ha prodotto dist/StemForge/StemForge"
+    cmp -s "$WORK/dist/StemForge/_internal/libpython3.12.so.1.0" "$PYTHON_PREFIX/lib/libpython3.12.so.1.0" \
+        || die "la libpython nel pacchetto non e' quella di $PYTHON_PREFIX (build_python.sh)"
 }
 
 make_appdir() {

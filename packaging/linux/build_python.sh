@@ -27,6 +27,10 @@ PY_SHA256="b5796915dc45ff745cfb4e990a7e7c93d6f546328a102ce31448d69ebc37575c"
 # -devel trascina un aggiornamento di util-linux che nel container senza
 # root vero (rootless_container.py) non si installa (file del gruppo tty).
 REQUIRED_MODULES="ssl, ctypes, lzma, bz2, zlib, sqlite3"
+# Niente readline: il modulo linka libreadline (GPLv3+), che PyInstaller
+# porterebbe nel pacchetto MIT (build del 20-11-2026), e a un'app grafica
+# non serve. Cambiare queste opzioni cambia lo stamp: la cache si rifa'.
+CONFIGURE_OPTIONS="--enable-shared --with-ensurepip=no --without-readline"
 
 die() { echo "build_python.sh: ERRORE: $*" >&2; exit 1; }
 log() { echo "build_python.sh: $*" >&2; }
@@ -36,7 +40,9 @@ PREFIX="$1"
 STAMP="$PREFIX/.stemforge-python"
 PYTHON="$PREFIX/bin/python3.12"
 
-if [ -x "$PYTHON" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$PY_VERSION $PY_SHA256" ]; then
+BUILD_ID="$PY_VERSION $PY_SHA256 $CONFIGURE_OPTIONS"
+
+if [ -x "$PYTHON" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$BUILD_ID" ]; then
     log "Python $PY_VERSION gia' in $PREFIX"
     exit 0
 fi
@@ -65,11 +71,14 @@ compile() {
     (
         cd "$source"
         # $$ORIGIN: il Makefile lo passa al linker come $ORIGIN, cosi'
-        # python3.12 trova la propria libpython senza LD_LIBRARY_PATH.
+        # python3.12 trova la propria libpython senza LD_LIBRARY_PATH
+        # (ma non chi lo raggiunge dal symlink del venv: build_appimage.sh).
         # Niente --enable-optimizations: il tempo dell'app e' in torch, non
         # nell'interprete, e la PGO triplica la durata della build.
-        # shellcheck disable=SC2016 # $$ORIGIN e' per make e ld, non per bash
-        ./configure --prefix="$PREFIX" --enable-shared --with-ensurepip=no \
+        # SC2016: $$ORIGIN e' per make e ld, non per bash;
+        # SC2086: CONFIGURE_OPTIONS va diviso in parole
+        # shellcheck disable=SC2016,SC2086
+        ./configure --prefix="$PREFIX" $CONFIGURE_OPTIONS \
             LDFLAGS='-Wl,-rpath,$$ORIGIN/../lib' >/dev/null
         make -j"$(nproc)" >/dev/null
         rm -rf "$PREFIX"
@@ -103,7 +112,7 @@ main() {
     log "compilo Python $PY_VERSION in $PREFIX"
     compile "$SCRATCH/Python-$PY_VERSION"
     check_result
-    echo "$PY_VERSION $PY_SHA256" > "$STAMP"
+    echo "$BUILD_ID" > "$STAMP"
     log "Python $PY_VERSION pronto: $PYTHON"
 }
 

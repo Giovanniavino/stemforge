@@ -120,6 +120,22 @@ def test_libraries_wanted_only_by_host_libraries_are_orphans() -> None:
     assert orphans == {mount, blkid, uuid}
 
 
+def test_fips_signatures_of_removed_libraries_go_too(tmp_path: Path) -> None:
+    internal = tmp_path / "_internal"
+    internal.mkdir()
+    for name in ("libssl.so.1.1", ".libssl.so.1.1.hmac", ".libgnutls.so.30.hmac"):
+        (internal / name).write_bytes(b"x")
+    assert [p.name for p in bundle_libs._leftovers(internal)] == [".libgnutls.so.30.hmac"]
+    assert sorted(p.name for p in internal.iterdir()) == [".libssl.so.1.1.hmac", "libssl.so.1.1"]
+
+
+def test_gpl_only_libraries_are_found_anywhere_in_the_bundle(tmp_path: Path) -> None:
+    (tmp_path / "_internal" / "sub").mkdir(parents=True)
+    (tmp_path / "_internal" / "sub" / "libreadline.so.7").write_bytes(b"x")
+    (tmp_path / "_internal" / "libgcc_s.so.1").write_bytes(b"x")  # GPL con eccezione: ammessa
+    assert bundle_libs.gpl_only(tmp_path) == ["libreadline.so.7"]
+
+
 def test_python_extensions_and_libpython_are_never_orphans() -> None:
     owned = bundle_libs._PYTHON_OWNED
     for name in ("_ssl.cpython-312-x86_64-linux-gnu.so", "libpyside6.abi3.so.6.7",
@@ -259,7 +275,12 @@ def test_python_for_pyinstaller_is_pinned_and_shared() -> None:
     assert re.fullmatch(r"3\.12\.\d+", version), "il profilo linux-x64 e' Python 3.12 (§2.2)"
     assert re.fullmatch(r"[0-9a-f]{64}", _shell_value(script, "PY_SHA256"))
     assert _shell_value(script, "PY_URL").startswith("https://www.python.org/ftp/python/$PY_VERSION/")
-    assert re.search(r"^\s*\./configure [^\n]*--enable-shared", script, re.MULTILINE)
+    options = _shell_value(script, "CONFIGURE_OPTIONS").split()
+    assert "--enable-shared" in options
+    # il modulo readline linka libreadline, GPLv3+: non deve entrare nel pacchetto MIT
+    assert "--without-readline" in options
+    assert re.search(r'^\s*\./configure --prefix="\$PREFIX" \$CONFIGURE_OPTIONS ', script, re.MULTILINE)
+    assert "$CONFIGURE_OPTIONS" in _shell_value(script, "BUILD_ID"), "opzioni diverse, stessa cache"
 
 
 def test_appimage_build_uses_the_shared_python() -> None:
