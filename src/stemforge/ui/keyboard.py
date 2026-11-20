@@ -8,6 +8,10 @@ e tengono i loro Invio/Esc.
 
 QKeySequence.StandardKey.Open diventa Cmd+O su macOS e Ctrl+O altrove:
 la convenzione la applica Qt, non questo codice.
+
+Nessuna scorciatoia si ripete tenendo premuto il tasto: un tasto tenuto
+giù è un'azione sola. Senza, Invio tenuto premuto su Scelta avvierebbe
+la separazione e le ripetizioni arriverebbero sulla schermata successiva.
 """
 
 from __future__ import annotations
@@ -35,6 +39,7 @@ def install(
     for sequence, handler in bindings:
         shortcut = QShortcut(sequence, window)
         shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        shortcut.setAutoRepeat(False)
         shortcut.activated.connect(handler)
         shortcuts.append(shortcut)
     return shortcuts

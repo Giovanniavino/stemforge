@@ -62,11 +62,11 @@ class StemList(QListWidget):
         self.setDragEnabled(True)
 
     def selected_paths(self) -> list[Path]:
-        return [
-            Path(item.data(_PATH_ROLE))
-            for item in self.selectedItems()
-            if item.data(_PATH_ROLE)
-        ]
+        """Nell'ordine dell'elenco, non in quello dei clic: le tracce
+        arrivano nella DAW come le vede l'utente (selectedItems() segue
+        l'ordine di selezione)."""
+        items = sorted(self.selectedItems(), key=self.row)
+        return [Path(item.data(_PATH_ROLE)) for item in items if item.data(_PATH_ROLE)]
 
     def startDrag(self, _actions: Qt.DropAction) -> None:
         paths = self.selected_paths()

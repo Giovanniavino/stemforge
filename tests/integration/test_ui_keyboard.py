@@ -191,6 +191,28 @@ def test_escape_cancels_a_running_separation(window, tmp_path):
     assert window.cancel_calls == [True]
 
 
+@pytest.mark.parametrize("key", [Qt.Key.Key_Return, Qt.Key.Key_Enter])
+def test_enter_never_cancels_a_separation(window, tmp_path, key):
+    """Il primo Invio avvia il job e porta il focus su Annulla: il secondo
+    (o le ripetizioni di un Invio tenuto giù) non deve fermarlo."""
+    _to_picker(window, tmp_path)
+    _press(key)
+    assert window._stack.currentWidget() is window._progress
+    assert QApplication.focusWidget() is window._progress.cancel_button
+    _press(key)
+    _press(key)
+    assert window.cancel_calls == []
+    assert window._stack.currentWidget() is window._progress
+    assert len(window.started_jobs) == 1
+
+
+def test_a_held_key_is_one_action(window):
+    """QShortcut ripete l'azione finché il tasto resta giù: nessuna delle
+    scorciatoie della finestra deve farlo."""
+    assert len(window._shortcuts) == 4
+    assert [s.autoRepeat() for s in window._shortcuts] == [False] * 4
+
+
 def test_escape_does_not_stop_the_first_start(window):
     """Il download dei modelli non ha Annulla (§9.4): Esc non lo tocca."""
     window._preparing = True

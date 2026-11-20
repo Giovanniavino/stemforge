@@ -80,6 +80,22 @@ def test_output_folder_is_the_system_music_folder():
     assert conventions.default_output_dir() == Path(music) / "StemForge"
 
 
+def test_output_folder_is_asked_to_the_system_not_guessed(monkeypatch, tmp_path):
+    """Una Musica spostata (OneDrive, altro disco) non sta sotto la home:
+    la cartella deve venire da QStandardPaths anche quando è altrove.
+    Su questo PC Musica non è spostata, quindi lo spostamento si simula."""
+    moved = tmp_path / "OneDrive" / "Musica"
+
+    class MovedMusic(QStandardPaths):
+        @staticmethod
+        def writableLocation(location):  # noqa: N802
+            assert location == QStandardPaths.StandardLocation.MusicLocation
+            return str(moved)
+
+    monkeypatch.setattr(conventions, "QStandardPaths", MovedMusic)
+    assert conventions.default_output_dir() == moved / "StemForge"
+
+
 @pytest.mark.skipif(sys.platform != "win32", reason="cartelle note di Windows")
 def test_output_folder_follows_onedrive_redirection():
     """Il confronto è con la cartella nota chiesta a Windows stesso
@@ -277,6 +293,28 @@ def test_drag_uses_drag_export_with_every_selected_stem(qapp, monkeypatch, tmp_p
     (drag,) = _FakeDrag.made
     assert drag.mime is not None
     assert drag.action == Qt.DropAction.CopyAction  # Copy, mai Move
+
+
+def test_drag_keeps_the_list_order_not_the_click_order(qapp, monkeypatch, tmp_path):
+    """Selezionando basso e poi voce, le tracce arrivano nella DAW come
+    sono nell'elenco: voce prima di basso."""
+    built: list[list[Path]] = []
+    module = types.ModuleType(_DRAG_MODULE)
+    module.build_mime_data = lambda paths: built.append(list(paths)) or QMimeData()
+    monkeypatch.setitem(sys.modules, _DRAG_MODULE, module)
+    _FakeDrag.made = []
+    monkeypatch.setattr(result_view, "QDrag", _FakeDrag)
+
+    view = result_view.ResultView()
+    out = tmp_path / "out" / "brano"
+    view.show_result(out, write_manifest(out), [])
+    view.list.clearSelection()
+    view.list.item(2).setSelected(True)
+    view.list.item(0).setSelected(True)
+    # Qt dà l'ordine dei clic: è quello che la lista deve correggere
+    assert [view.list.row(i) for i in view.list.selectedItems()] == [2, 0]
+    view.list.startDrag(Qt.DropAction.CopyAction)
+    assert built == [[out / "vocals.wav", out / "bass.wav"]]
 
 
 def test_drag_without_selection_starts_nothing(qapp, monkeypatch, tmp_path):

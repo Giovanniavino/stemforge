@@ -112,6 +112,11 @@ class MainWindow(QMainWindow):
         self._drop.choose_files()
 
     def _on_return(self) -> None:
+        # Invio non annulla mai (§8.6: Invio = Separa, Esc = Annulla): su
+        # Avanzamento il focus sta su Annulla, e un secondo Invio dopo
+        # quello che ha avviato il job lo fermerebbe cancellando i file
+        if self._stack.currentWidget() is self._progress:
+            return
         # Separa è il pulsante predefinito della scelta strumenti: Invio lo
         # preme da una casella o da un menu, mentre su "Tutto" o "Indietro"
         # preme quello, come farebbe un dialogo
