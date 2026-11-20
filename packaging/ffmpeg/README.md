@@ -91,6 +91,14 @@ Chiave di cache consigliata: hash di `VERSION`, `SOURCE_SHA256`, `build.sh`.
   `STEMFORGE_FFMPEG` in `%LOCALAPPDATA%\StemForge-dev` i test ffmpeg si
   saltavano solo nell'ambiente legacy.
 
+  Copia di sviluppo sul dev-box (compilata con questo script da WSL il
+  20-11-2026, 7.1.5, `ffmpeg.exe` SHA-256 accanto al file):
+  `%USERPROFILE%\.cache\stemforge-dev\ffmpeg\7.1.5-win-x64\`, valida per
+  tutti e tre gli ambienti Python. La stessa copia sta anche in
+  `%LOCALAPPDATA%\StemForge-dev\ffmpeg\7.1.5-win-x64\`, ma la vedono solo
+  gli interpreti non Store. L'hash vale per quella copia, non per ogni
+  build: la build mingw non è stata resa riproducibile al byte.
+
 - Una build `linux-x64` fuori da manylinux richiede
   `STEMFORGE_FFMPEG_ALLOW_HOST_GLIBC=1` ed è solo per sviluppo: il binario
   chiede la glibc dell'host.
