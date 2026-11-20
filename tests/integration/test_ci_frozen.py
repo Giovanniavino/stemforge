@@ -175,6 +175,11 @@ def test_selftest_offline_passes(frozen_exe: Path, tmp_path: Path):
     assert data["ok"] and proc.returncode == 0
     statuses = {c["name"]: c["status"] for c in data["checks"]}
     assert statuses.get("decodifica dei formati") == "ok", statuses
+    # ogni collaudo di decodifica (anche quelli con FFmpeg, §10.5) deve
+    # essere passato davvero: "skip" vorrebbe dire un decoder assente
+    # nel pacchetto, proprio il guasto che questa batteria cerca
+    decoders = {name: s for name, s in statuses.items() if name.startswith("decodifica")}
+    assert all(s == "ok" for s in decoders.values()), decoders
 
 
 def test_corrupt_file_gives_clear_error(frozen_exe: Path, tmp_path: Path):
@@ -195,12 +200,28 @@ def test_corrupt_file_gives_clear_error(frozen_exe: Path, tmp_path: Path):
     assert not (tmp_path / "out").exists() or not any((tmp_path / "out").rglob("*.wav"))
 
 
-def _started(process: subprocess.Popen[str]) -> Path:
-    message = _wait_for(
-        _messages(process), (protocol.Started, protocol.Error), STARTED_TIMEOUT_S,
-    )
+def _started(process: subprocess.Popen[str]) -> tuple[Path, queue.Queue]:
+    found = _messages(process)
+    message = _wait_for(found, (protocol.Started, protocol.Error), STARTED_TIMEOUT_S)
     assert isinstance(message, protocol.Started), f"il worker non e' partito: {message!r}"
-    return Path(message.out_dir)
+    return Path(message.out_dir), found
+
+
+def _stdout_closed(found: queue.Queue, timeout_s: float) -> bool:
+    """True quando ogni processo che teneva lo stdout del worker e' morto.
+
+    Che il processo lanciato sia uscito non basta: un'AppImage o un
+    launcher lasciano un figlio, e un figlio sopravvissuto continua a
+    separare e a tenere aperti i file. EOF su stdout arriva solo quando
+    l'ultimo di loro chiude il tubo."""
+    deadline = time.monotonic() + timeout_s
+    while (left := deadline - time.monotonic()) > 0:
+        try:
+            if found.get(timeout=left) is None:
+                return True
+        except queue.Empty:
+            return False
+    return False
 
 
 def test_m4a_decodes_inside_the_package(frozen_exe: Path, tmp_path: Path):
@@ -209,7 +230,7 @@ def test_m4a_decodes_inside_the_package(frozen_exe: Path, tmp_path: Path):
     m4a = _make_m4a(frozen_exe, tmp_path)
     process = _start_job(frozen_exe, m4a, tmp_path / "out")
     try:
-        out_dir = _started(process)
+        out_dir, _ = _started(process)
         assert out_dir.is_dir()
     finally:
         _kill(process)
@@ -219,10 +240,11 @@ def test_m4a_decodes_inside_the_package(frozen_exe: Path, tmp_path: Path):
 def test_kill_stops_worker_within_one_second(frozen_exe: Path, mix_44k: Path, tmp_path: Path):
     process = _start_job(frozen_exe, mix_44k, tmp_path / "out")
     try:
-        out_dir = _started(process)
+        out_dir, found = _started(process)
         started = time.monotonic()
         _kill(process)  # Annulla, come bridge.py (D2)
         process.wait(timeout=KILL_DEADLINE_S)
+        assert _stdout_closed(found, KILL_DEADLINE_S), "un processo del worker e' sopravvissuto"
         assert time.monotonic() - started < KILL_DEADLINE_S
         # nessun file resta bloccato da un processo sopravvissuto
         shutil.rmtree(out_dir)
