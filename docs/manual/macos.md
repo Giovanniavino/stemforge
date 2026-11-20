@@ -48,6 +48,8 @@ afconvert -f WAVE -d LEI16@44100 prova.aiff prova.wav
 - [ ] Doppio click sul DMG: si monta un volume "StemForge" con
       `StemForge.app` e un collegamento ad `Applications`.
 - [ ] Trascina l'app su `Applications` ed espelli il volume.
+- [ ] Contenuto del pacchetto (sezione D, colonna Intel): tutte le
+      righe danno l'esito atteso.
 - [ ] Primo avvio senza Developer ID: click destro su StemForge in
       Applicazioni → Apri → Apri. L'app si apre. Non deve comparire
       "è danneggiata" né "non può essere aperta su questo Mac" (quel
@@ -86,6 +88,9 @@ Riparti da zero (ultima riga della sezione 0), poi:
         supportati.";
   - [ ] zip **senza** FFmpeg: riquadro giallo "!!! ATTENZIONE !!!" che
         dice che m4a, aac e alac non si apriranno. Mai silenzio.
+- [ ] Sezione D, colonna Intel: stessi esiti del DMG. Unica differenza
+      ammessa: senza FFmpeg nello zip, la riga D3 dice
+      `No such file or directory`.
 - [ ] PyAV non c'è nell'ambiente di build (D9):
       `~/Library/Application\ Support/StemForge/build-env/bin/python -m pip show av`
       risponde `WARNING: Package(s) not found: av`.
@@ -112,6 +117,8 @@ quella di m4a/aac/alac, se lo zip non contiene FFmpeg.
 ### B1. DMG arm64 (`StemForge-<versione>-macos-arm64.dmg`)
 
 - [ ] Monta il DMG e trascina l'app su `Applications`.
+- [ ] Contenuto del pacchetto (sezione D, colonna arm64): tutte le
+      righe danno l'esito atteso.
 - [ ] Primo avvio senza Developer ID:
   - macOS 11–14: click destro → Apri → Apri;
   - macOS 15 e successivi: il primo doppio click viene bloccato. Vai in
@@ -184,6 +191,22 @@ arm64 in `/Applications`; alla fine rimetti quella del DMG.
 - [ ] **C7.** Chiudi e riapri l'app: niente download, niente
       calibrazione, subito la finestra principale (offline per sempre,
       §9.2). Prova anche col Wi-Fi spento.
+
+## D. Contenuto del pacchetto (un minuto, dal Terminale)
+
+Comandi di sola lettura sull'app installata. `A=/Applications/StemForge.app`
+va incollato una volta prima delle righe.
+
+| Riga | Comando | Intel (A1, A2) | arm64 (B1) |
+|---|---|---|---|
+| D1 | `defaults read "$A/Contents/Info" LSMinimumSystemVersion` | `10.15` | `11.0` |
+| D2 | `file "$A/Contents/MacOS/StemForge"` | `x86_64` | `arm64` |
+| D3 | `file "$A/Contents/Frameworks/ffmpeg/ffmpeg"` | `Mach-O 64-bit executable x86_64` | `Mach-O 64-bit executable arm64` |
+| D4 | `ls "$A/Contents/Frameworks" \| grep -iE '^av($\|\.)'` | nessuna riga: PyAV (GPLv3) assente, D9 | idem |
+| D5 | `ls "$A/Contents/Resources/i18n"` | i file `.qm` delle traduzioni, se la versione ne ha | idem |
+| D6 | `codesign --verify --strict "$A" && echo firma-ok` | `firma-ok` (anche ad-hoc) | idem |
+
+- [ ] D1–D6 danno l'esito della colonna della macchina.
 
 ## Esito
 
