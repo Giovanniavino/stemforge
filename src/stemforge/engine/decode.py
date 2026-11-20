@@ -21,16 +21,18 @@ import numpy as np
 import soundfile as sf
 
 from stemforge.engine.errors import UnsupportedFormatError
+from stemforge.engine.formats import (
+    FFMPEG_EXTENSIONS,
+    SOUNDFILE_EXTENSIONS,
+    SUPPORTED_EXTENSIONS,
+)
+
+__all__ = [
+    "FFMPEG_EXTENSIONS", "SOUNDFILE_EXTENSIONS", "SUPPORTED_EXTENSIONS",
+    "ffmpeg_module", "probe_duration", "read", "soundfile_duration",
+]
 
 log = logging.getLogger(__name__)
-
-# Letti da libsndfile: se soundfile fallisce su questi, il file è rotto.
-SOUNDFILE_EXTENSIONS = frozenset(
-    {".wav", ".wave", ".flac", ".ogg", ".oga", ".mp3", ".aiff", ".aif", ".aifc"}
-)
-# Solo FFmpeg: m4a porta AAC o ALAC, .aac è AAC grezzo (ADTS).
-FFMPEG_EXTENSIONS = frozenset({".m4a", ".aac"})
-SUPPORTED_EXTENSIONS = SOUNDFILE_EXTENSIONS | FFMPEG_EXTENSIONS
 
 _FFMPEG_MODULE = "stemforge.engine.ffmpeg"
 

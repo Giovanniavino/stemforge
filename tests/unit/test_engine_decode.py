@@ -209,6 +209,21 @@ def test_probe_duration_uses_ffmpeg_only_where_soundfile_cannot(tmp_path, fake_f
     assert decode.probe_duration(_container(tmp_path)) is None
 
 
+def test_the_drop_list_does_not_load_the_decoders():
+    # §8.5: l'UI importa worker/planning per rifiutare al drop, e quel
+    # processo non deve caricare libsndfile (né torch) per una lista di estensioni
+    import subprocess
+
+    code = (
+        "import sys, stemforge.worker.planning as p;"
+        "print(sorted(m for m in ('soundfile', 'torch') if m in sys.modules));"
+        "print(p.SUPPORTED_SUFFIXES == __import__('stemforge.engine.decode',"
+        " fromlist=['x']).SUPPORTED_EXTENSIONS)"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.split() == ["[]", "True"], out.stdout + out.stderr
+
+
 def test_supported_extensions_cover_the_spec():
     # §5.7: wav flac mp3 ogg aiff m4a/aac alac (alac sta in .m4a)
     for ext in (".wav", ".flac", ".mp3", ".ogg", ".aiff", ".aif", ".m4a", ".aac"):

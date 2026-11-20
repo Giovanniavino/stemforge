@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stemforge.engine import calibrate
-from stemforge.engine.decode import SUPPORTED_EXTENSIONS
+from stemforge.engine.formats import SUPPORTED_EXTENSIONS
 from stemforge.engine.planner import estimate_seconds, plan
 from stemforge.model.job import SeparationJob
 
