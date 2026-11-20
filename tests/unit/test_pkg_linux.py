@@ -92,6 +92,43 @@ def test_ldd_resolution_and_missing_libraries() -> None:
     assert "linux-vdso.so.1" not in deps  # niente '=>': ne' copiabile ne' mancante
 
 
+def test_readelf_gives_the_soname() -> None:
+    assert bundle_libs.parse_readelf(READELF_QXCB).soname == "libqxcb.so"
+    assert bundle_libs.parse_readelf("").soname is None
+
+
+def _elf(needed: list[str], soname: str | None = None) -> bundle_libs.ElfInfo:
+    return bundle_libs.ElfInfo(needed=needed, soname=soname)
+
+
+def test_libraries_wanted_only_by_host_libraries_are_orphans() -> None:
+    """Il caso visto nella build del 20-11-2026: glib (host) tolta, la sua
+    catena libmount -> libblkid -> libuuid restava in _internal/."""
+    internal = Path("/b/_internal")
+    qt_core, gssapi = internal / "PySide6/Qt/lib/libQt6Core.so.6", internal / "libgssapi_krb5.so.2"
+    mount, blkid, uuid = internal / "libmount.so.1", internal / "libblkid.so.1", internal / "libuuid.so.1"
+    renamed = internal / "libcrypto-1a2b.so.1.1"  # chiesta col SONAME, non col nome del file
+    infos = {
+        qt_core: _elf(["libglib-2.0.so.0", "libgssapi_krb5.so.2", "libcrypto.so.1.1"]),
+        gssapi: _elf(["libc.so.6"], "libgssapi_krb5.so.2"),
+        mount: _elf(["libblkid.so.1", "libuuid.so.1"], "libmount.so.1"),
+        blkid: _elf(["libuuid.so.1"], "libblkid.so.1"),
+        uuid: _elf([], "libuuid.so.1"),
+        renamed: _elf([], "libcrypto.so.1.1"),
+    }
+    orphans = bundle_libs.find_orphans(infos, {gssapi, mount, blkid, uuid, renamed})
+    assert orphans == {mount, blkid, uuid}
+
+
+def test_python_extensions_and_libpython_are_never_orphans() -> None:
+    owned = bundle_libs._PYTHON_OWNED
+    for name in ("_ssl.cpython-312-x86_64-linux-gnu.so", "libpyside6.abi3.so.6.7",
+                 "QtCore.abi3.so", "libpython3.12.so.1.0"):
+        assert owned.search(name), name
+    for name in ("libssl.so.1.1", "libxcb-cursor.so.0", "libmpdec.so.3"):
+        assert not owned.search(name), name
+
+
 @pytest.fixture(scope="module")
 def host_patterns() -> list[re.Pattern[str]]:
     return bundle_libs.load_host_patterns(LINUX / "host_libs.txt")
