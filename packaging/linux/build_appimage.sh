@@ -99,6 +99,7 @@ install_system_packages() {
     dnf -y -q install \
         xcb-util xcb-util-cursor xcb-util-image xcb-util-keysyms \
         xcb-util-renderutil xcb-util-wm libxkbcommon libxkbcommon-x11 \
+        libXrandr libXext \
         file desktop-file-utils
 }
 
@@ -136,6 +137,10 @@ make_appdir() {
     mkdir -p "$APPDIR/usr/lib" "$APPDIR/usr/share/applications" \
         "$APPDIR/usr/share/icons/hicolor/256x256/apps"
     cp -a "$WORK/dist/StemForge" "$APPDIR/usr/lib/stemforge"
+    # Qt 6.7 su Linux usa il backend FFmpeg di QtMultimedia (dentro il suo
+    # plugin); quello GStreamer vorrebbe il GStreamer dell'host con i suoi
+    # plugin, che non si possono portare nel pacchetto ne' dare per scontati
+    rm -f "$APPDIR/usr/lib/stemforge/_internal/PySide6/Qt/plugins/multimedia/libgstreamermediaplugin.so"
     "$VENV/bin/python" "$HERE/bundle_libs.py" "$APPDIR/usr/lib/stemforge" "$HERE/host_libs.txt" \
         --report "$WORK/system-libs.txt" >/dev/null
     install -m 0755 "$HERE/AppRun" "$APPDIR/AppRun"

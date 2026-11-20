@@ -140,21 +140,32 @@ class Scan:
     too_new: dict[str, list[str]] = field(default_factory=dict)
 
 
-def scan(bundle: Path, files: list[Path], patterns: list[re.Pattern[str]]) -> Scan:
-    """Dipendenze dirette dei file dati: da copiare, introvabili, troppo nuove."""
+def bundled_sonames(bundle: Path) -> set[str]:
+    """Nomi delle librerie gia' nel pacchetto, in qualsiasi sottocartella."""
+    return {path.name for path in bundle.rglob("*.so*") if path.is_file() or path.is_symlink()}
+
+
+def scan(bundle: Path, files: list[Path], patterns: list[re.Pattern[str]], in_bundle: set[str]) -> Scan:
+    """Dipendenze dirette dei file dati: da copiare, introvabili, troppo nuove.
+
+    Una dipendenza con il nome di una libreria gia' nel pacchetto e' sua
+    anche se ldd non la trova: torchaudio chiede libtorch.so e libc10.so
+    senza RUNPATH, perche' le carica `import torch` (da torch/lib/) prima
+    di lui, e il loader riconosce le librerie gia' caricate dal soname.
+    """
     internal, root = bundle / "_internal", bundle.resolve()
     result = Scan()
     for path in files:
         info, label = readelf(path), str(path.relative_to(bundle))
         if problems := too_new(info):
             result.too_new[label] = problems
-        wanted = [name for name in info.needed if not is_host(name, patterns)]
+        wanted = [name for name in info.needed if not is_host(name, patterns) and name not in in_bundle]
         resolved = ldd(path, internal) if wanted else {}
         for name in wanted:
             target = resolved.get(name)
             if target is None:
                 result.missing.setdefault(name, set()).add(label)
-            elif root not in Path(target).resolve().parents and not (internal / name).exists():
+            elif root not in Path(target).resolve().parents:
                 result.to_copy[name] = Path(target)
     return result
 
@@ -179,7 +190,7 @@ def add_system_libs(bundle: Path, patterns: list[re.Pattern[str]]) -> list[str]:
     added: list[str] = []
     pending = elf_files(bundle)
     for _ in range(_MAX_ROUNDS):
-        result = scan(bundle, pending, patterns)
+        result = scan(bundle, pending, patterns, bundled_sonames(bundle))
         _fail_on(result)
         if not result.to_copy:
             return added
