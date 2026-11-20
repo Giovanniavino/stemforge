@@ -82,3 +82,11 @@ def test_virtualized_localappdata_tells_where_writes_really_go(wi, tmp_path: Pat
     assert (redirected is None) == (not copies)
     if redirected is not None:
         assert os.path.normcase(copies[0].parent) == os.path.normcase(redirected)
+
+
+def test_refused_max_dir_reads_the_installer_log(wi):
+    """La riga è quella di stemforge.iss (test_pkg_windows_iss la confronta):
+    da lì il collaudo prende la cartella più lunga da provare per intero."""
+    log = "2026-11-20 10:00:00.000   " + wi.REFUSED_DIR_LOG % (231, 117) + "\n"
+    assert wi.refused_max_dir(log) == 117
+    assert wi.refused_max_dir("Installazione completata.\n") is None

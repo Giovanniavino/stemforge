@@ -162,6 +162,14 @@ def test_folder_length_is_checked_before_copying():
     assert "LongPathsEnabled" not in code, "Inno non scrive oltre MAX_PATH nemmeno con i percorsi lunghi attivi"
 
 
+def test_refusal_log_line_is_the_one_the_verifier_parses():
+    """Il collaudo dei percorsi lunghi legge dal log il massimo accettato:
+    se la riga cambia da una parte sola, il collaudo non trova il rifiuto."""
+    code = "\n".join(_section("Code"))
+    expected = str(_verifier_constants()["REFUSED_DIR_LOG"])
+    assert f"Log(Format('{expected}', [Length(Dir), MaxInstallDirLength()]))" in code
+
+
 @pytest.mark.parametrize("language", ["italian", "english"])
 def test_messages_exist_in_both_languages(language: str):
     names = {line.split("=", 1)[0] for line in _section("CustomMessages")}

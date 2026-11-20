@@ -11,9 +11,11 @@ poi la disinstalla in silenzio e verifica che sia sparita davvero e che
 i dati dell'utente (%LOCALAPPDATA%\\StemForge) siano rimasti.
 
 --matrix prova cartella predefinita, cartella con spazi e accenti e
-percorso oltre 200 caratteri (§9.7); senza, solo una cartella temporanea
-(o quella di --dir). Il riepilogo va in <report.json>, i --selftest
-accanto, uno per caso.
+percorso oltre 200 caratteri (§9.7): se l'app non ci sta sotto MAX_PATH
+l'installer deve rifiutarlo pulito, e il collaudo completo si ripete
+nella cartella più lunga che accetta. Senza --matrix, solo una cartella
+temporanea (o quella di --dir). Il riepilogo va in <report.json>, i
+--selftest accanto, uno per caso.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -37,11 +40,15 @@ _OPEN_WITH_ALIVE_S = 10
 _LONG_PATH_MIN_CHARS = 200
 
 
-def _install(setup: Path, target: Path | None, log: Path) -> Path:
+def _run_setup(setup: Path, target: Path | None, log: Path) -> int:
     command = [str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", f"/LOG={log}"]
     if target is not None:
         command.append(f"/DIR={target}")
-    code = subprocess.run(command, timeout=_INSTALL_TIMEOUT_S).returncode
+    return subprocess.run(command, timeout=_INSTALL_TIMEOUT_S).returncode
+
+
+def _install(setup: Path, target: Path | None, log: Path) -> Path:
+    code = _run_setup(setup, target, log)
     installed = wi.installed_dir()
     if code != 0 or installed is None or not (installed / wi.APP_EXE).is_file():
         print(log.read_text(encoding="utf-8", errors="replace") if log.exists() else "nessun log")
@@ -125,16 +132,55 @@ def _run_case(setup: Path, name: str, target: Path | None, report: Path, args: a
     return result
 
 
+def _long_dir(scratch: Path) -> Path:
+    long_dir = scratch
+    while len(str(long_dir)) < _LONG_PATH_MIN_CHARS:
+        long_dir = long_dir / "percorso molto lungo per il collaudo"
+    return long_dir / "StemForge"
+
+
+def _dir_of_length(base: Path, length: int) -> Path:
+    """Una cartella sotto `base` lunga esattamente `length` caratteri."""
+    padding = length - len(str(base / "StemForge")) - 1
+    if padding < 1:
+        raise AssertionError(f"{base} è già più lunga di {length} caratteri")
+    return base / ("p" * padding) / "StemForge"
+
+
+def _probe_long_dir(setup: Path, target: Path, report: Path) -> dict:
+    """Inno Setup non scrive oltre MAX_PATH nemmeno con i percorsi lunghi di
+    Windows attivi: se l'app non ci sta, l'installer deve rifiutare la
+    cartella PRIMA di copiare, con un errore e senza lasciare niente."""
+    print(f"\n=== lungo-oltre-il-limite: {target} ({len(str(target))} caratteri)", flush=True)
+    log = report.with_name(f"{report.stem}.lungo-oltre-il-limite.install.log")
+    code = _run_setup(setup, target, log)
+    result = {"case": "lungo-oltre-il-limite", "requested_dir": str(target),
+              "requested_dir_chars": len(str(target)), "exit_code": code, "ok": True}
+    if code == 0 and wi.installed_dir() is not None:
+        _uninstall()  # l'app ci sta: il caso "lungo" la collauda per intero lì
+        return {**result, "accepted": True, "max_dir_chars": None}
+    limit = wi.refused_max_dir(log.read_text(encoding="utf-8", errors="replace") if log.exists() else "")
+    if limit is None or wi.installed_dir() is not None or target.exists():
+        raise AssertionError(f"cartella lunga né installata né rifiutata pulita (uscita {code}, log {log})")
+    print(f"  ok: rifiutata prima di copiare (uscita {code}), massimo accettato {limit} caratteri", flush=True)
+    return {**result, "accepted": False, "max_dir_chars": limit}
+
+
 def _cases(args: argparse.Namespace, scratch: Path) -> list[tuple[str, Path | None]]:
     if args.dir:
         return [("dir", Path(args.dir))]
     if not args.matrix:
         return [("temporanea", scratch / "StemForge")]
     accented = scratch / "Cartella con spazi àèéìòù ÄÖÜ ñ" / "StemForge"
-    long_dir = scratch
-    while len(str(long_dir)) < _LONG_PATH_MIN_CHARS:
-        long_dir = long_dir / "percorso molto lungo per il collaudo"
-    return [("predefinita", None), ("spazi-accenti", accented), ("lungo", long_dir / "StemForge")]
+    return [("predefinita", None), ("spazi-accenti", accented)]
+
+
+def _long_cases(setup: Path, scratch: Path, report: Path, args: argparse.Namespace) -> list[dict]:
+    """Oltre 200 caratteri se l'app ci sta, altrimenti il rifiuto pulito e
+    poi il collaudo completo nella cartella più lunga che l'installer accetta."""
+    probe = _probe_long_dir(setup, _long_dir(scratch), report)
+    target = _long_dir(scratch) if probe["accepted"] else _dir_of_length(scratch, probe["max_dir_chars"])
+    return [probe, _run_case(setup, "lungo", target, report, args)]
 
 
 def main() -> int:
@@ -161,7 +207,10 @@ def main() -> int:
                "msix_virtualized_localappdata": str(container) if container else None, "cases": []}
     for name, target in _cases(args, scratch):
         summary["cases"].append(_run_case(setup, name, target, report, args))
+    if args.matrix and not args.dir:
+        summary["cases"] += _long_cases(setup, scratch, report, args)
     summary["ok"] = all(case["ok"] for case in summary["cases"])
+    shutil.rmtree(scratch)  # dopo le disinstallazioni verificate restano solo cartelle vuote
     report.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
     print("\nINSTALLER COLLAUDATO" if summary["ok"] else "\nINSTALLER: COLLAUDO FALLITO", flush=True)
     return 0 if summary["ok"] else 1

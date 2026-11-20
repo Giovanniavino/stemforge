@@ -11,6 +11,7 @@ from __future__ import annotations
 import ctypes
 import math
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -30,6 +31,9 @@ CLASSES = r"Software\Classes"
 FOLDERID_PROGRAMS = "A77F5D77-2E2B-44C3-A6A2-ABA601054A51"
 FOLDERID_DESKTOP = "B4BFCC3A-DB2C-424C-B029-7FE99A87C641"
 FOLDERID_MUSIC = "4BD8D571-6D19-48D3-BE97-422220080E43"
+# la riga che stemforge.iss scrive nel log quando rifiuta una cartella troppo
+# lunga: il collaudo ne legge il massimo accettato invece di ricalcolarlo
+REFUSED_DIR_LOG = "Cartella troppo lunga: %d caratteri, massimo %d"
 _SHORTCUT = "StemForge.lnk"
 _TONE_RATE = 44100
 _TONE_SECONDS = 2
@@ -198,6 +202,13 @@ def models_footprint() -> tuple[int, int] | None:
         return None
     files = [p for p in models.rglob("*") if p.is_file()]
     return len(files), sum(p.stat().st_size for p in files)
+
+
+def refused_max_dir(log_text: str) -> int | None:
+    """Il massimo di caratteri che l'installer ha dichiarato, se ha rifiutato la cartella."""
+    pattern = re.escape(REFUSED_DIR_LOG).replace("%d", r"(\d+)")
+    match = re.search(pattern, log_text)
+    return int(match.group(2)) if match else None
 
 
 def tree_size(root: Path) -> int:
