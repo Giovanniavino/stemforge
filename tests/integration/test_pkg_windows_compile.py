@@ -26,7 +26,6 @@ pytestmark = pytest.mark.skipif(sys.platform != "win32", reason="Inno Setup: sol
 
 @pytest.fixture()
 def tools(monkeypatch: pytest.MonkeyPatch) -> tuple[ModuleType, Path]:
-    pytest.importorskip("PIL")
     monkeypatch.syspath_prepend(str(WINDOWS))
     import build_installer
     import windows_integration
@@ -51,6 +50,7 @@ def packaging_copy(tmp_path: Path) -> Path:
 
 
 def test_installer_script_compiles(tools, packaging_copy: Path):
+    pytest.importorskip("PIL")  # l'icona .ico la genera Pillow; le altre prove non la chiedono
     build_installer, iscc = tools
     setup = build_installer.compile_installer(iscc, packaging_copy, "1.2.3")
     assert setup == packaging_copy.parent / "dist" / "StemForge-1.2.3-windows-x64-setup.exe"
@@ -84,6 +84,7 @@ def test_compile_without_longest_path_is_refused(tools, packaging_copy: Path):
 
 def test_compiler_rejects_a_broken_code_section(tools, packaging_copy: Path):
     """Il primo test può fallire davvero: un [Code] rotto non compila."""
+    pytest.importorskip("PIL")
     build_installer, iscc = tools
     iss = packaging_copy / "windows" / "stemforge.iss"
     text = iss.read_text(encoding="utf-8-sig").replace("UninstallSilent()", "UninstallSilenzioso()")
