@@ -69,7 +69,10 @@ def run_pass_blocks(
     import torch
 
     total = work.shape[-1]
-    parts = blocks.split_blocks(total, backend.samplerate, available_memory())
+    budget = blocks.memory_for_blocks(
+        available_memory(), blocks.output_bytes(len(wanted), work.shape[0], total)
+    )
+    parts = blocks.split_blocks(total, backend.samplerate, budget)
     outputs: dict[StemKind, np.ndarray] = {}
     for index, block in enumerate(parts):
         chunk = torch.from_numpy(np.ascontiguousarray(work[:, block.start : block.end]))

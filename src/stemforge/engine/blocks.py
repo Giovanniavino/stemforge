@@ -48,6 +48,22 @@ class Block:
     fade_in: int  # campioni di rampa complementare all'inizio
 
 
+def output_bytes(sources: int, channels: int, frames: int) -> int:
+    """Byte degli stem di una passata a lunghezza PIENA (float32).
+
+    Restano in RAM per tutto il brano qualunque sia la lunghezza dei
+    blocchi: su 30 minuti e 4 sorgenti sono 1.3 GB.
+    """
+    return sources * channels * frames * np.dtype(np.float32).itemsize
+
+
+def memory_for_blocks(available_bytes: int | None, full_length_bytes: int) -> int | None:
+    """RAM che resta ai blocchi dopo gli stem a lunghezza piena; None se ignota."""
+    if available_bytes is None:
+        return None
+    return max(0, available_bytes - full_length_bytes)
+
+
 def fitting_seconds(available_bytes: int | None) -> float:
     """Secondi di audio che una passata regge senza swap; inf se la RAM è ignota."""
     if available_bytes is None:
