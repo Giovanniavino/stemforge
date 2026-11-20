@@ -28,7 +28,9 @@ Note non ovvie:
   checkpoint: l'analisi statica non le vede, servono i collect_submodules.
 - FFmpeg (D9) entra come BINARIO in "ffmpeg/": PyInstaller lo rende
   eseguibile e sul Mac lo firma insieme al resto; engine/ffmpeg.py lo
-  cerca in sys._MEIPASS/ffmpeg/.
+  cerca in sys._MEIPASS/ffmpeg/. Con lui viaggiano i testi di licenza
+  che la sua build scrive accanto (LGPL), e nella radice LICENSE e
+  THIRD_PARTY_NOTICES (§11.11), se ci sono.
 - i pesi NON stanno nel bundle: si scaricano al primo avvio (§9.2).
 """
 
@@ -54,7 +56,15 @@ PROFILES = {
 }
 _X64_MACHINES = ("x86_64", "amd64")
 _TRUTHY = ("1", "true", "yes")
-AUDIO_EXTENSIONS = ["wav", "mp3", "flac", "ogg", "m4a", "aac", "aiff", "aif"]
+# "Apri con" dal Finder: le stesse estensioni che il motore sa leggere
+# (soundfile + FFmpeg); un test controlla che non ne manchi nessuna
+AUDIO_EXTENSIONS = ["wav", "wave", "flac", "ogg", "oga", "mp3",
+                    "aiff", "aif", "aifc", "m4a", "aac"]
+# accanto al FFmpeg: la licenza LGPL e il link al sorgente prodotti dalla
+# sua build (packaging/ffmpeg/), che devono viaggiare con il binario
+FFMPEG_NOTICES = ("COPYING*", "LICENSE*", "*.txt", "*.md")
+PROJECT_NOTICES = ("LICENSE", "THIRD_PARTY_NOTICES", "THIRD_PARTY_NOTICES.md",
+                   "THIRD_PARTY_NOTICES.txt")
 
 
 def _fail(message):
@@ -95,10 +105,14 @@ def _resolve_profile():
     return profile
 
 
+def _ffmpeg_path(profile):
+    name = "ffmpeg.exe" if profile == "win-x64" else "ffmpeg"
+    return SPEC_DIR / "ffmpeg" / "out" / profile / name
+
+
 def _ffmpeg_binaries(profile):
     """Il FFmpeg LGPL del profilo (area packaging/ffmpeg/, D9), se c'e'."""
-    name = "ffmpeg.exe" if profile == "win-x64" else "ffmpeg"
-    path = SPEC_DIR / "ffmpeg" / "out" / profile / name
+    path = _ffmpeg_path(profile)
     if path.is_file():
         print(f"stemforge.spec: FFmpeg LGPL incluso: {path}")
         return [(str(path), "ffmpeg")]
@@ -108,6 +122,21 @@ def _ffmpeg_binaries(profile):
               "togli STEMFORGE_REQUIRE_FFMPEG per una build senza m4a/aac.")
     _warn(f"{missing}.\nProseguo: l'app funzionera' ma NON aprira' m4a/aac/alac.")
     return []
+
+
+def _notices(profile):
+    """Licenze che accompagnano il pacchetto: del progetto nella radice,
+    del FFmpeg (LGPL: avviso e sorgente col binario) in "ffmpeg/"."""
+    found = [(str(ROOT / name), ".") for name in PROJECT_NOTICES if (ROOT / name).is_file()]
+    ffmpeg = _ffmpeg_path(profile)
+    if ffmpeg.is_file():
+        texts = {path for pattern in FFMPEG_NOTICES for path in ffmpeg.parent.glob(pattern)
+                 if path.is_file() and path != ffmpeg}
+        if not texts:
+            _warn(f"FFmpeg senza testo di licenza accanto ({ffmpeg.parent}): "
+                  "un pacchetto LGPL deve portarlo con se', non distribuirlo cosi'.")
+        found += [(str(path), "ffmpeg") for path in sorted(texts)]
+    return found
 
 
 def _translations():
@@ -175,7 +204,7 @@ a = Analysis(
     [str(ROOT / "src" / "stemforge" / "ui" / "app.py")],
     pathex=[str(ROOT / "src")],
     binaries=_ffmpeg_binaries(PROFILE),
-    datas=[*collect_data_files("demucs"), *_translations()],
+    datas=[*collect_data_files("demucs"), *_translations(), *_notices(PROFILE)],
     hiddenimports=[
         "stemforge.worker.runner",
         "stemforge.worker.selftest",
@@ -243,15 +272,23 @@ if IS_MAC:
             "LSMinimumSystemVersion": os.environ.get("STEMFORGE_MACOS_MIN") or MAC_MIN,
             "NSHighResolutionCapable": True,
             "LSApplicationCategoryType": "public.app-category.music",
-            # "Apri con" dal Finder (§9.1)
+            # "Apri con" dal Finder (§9.1). Due voci perche' dove c'e'
+            # LSItemContentTypes macOS ignora CFBundleTypeExtensions: i
+            # formati che il sistema non classifica come public.audio (ogg
+            # non ha un UTI di sistema) resterebbero fuori dal menu.
             "CFBundleDocumentTypes": [
                 {
                     "CFBundleTypeName": "Audio",
                     "CFBundleTypeRole": "Viewer",
                     "LSHandlerRank": "Alternate",
                     "LSItemContentTypes": ["public.audio"],
+                },
+                {
+                    "CFBundleTypeName": "Audio (estensioni)",
+                    "CFBundleTypeRole": "Viewer",
+                    "LSHandlerRank": "Alternate",
                     "CFBundleTypeExtensions": AUDIO_EXTENSIONS,
-                }
+                },
             ],
         },
     )

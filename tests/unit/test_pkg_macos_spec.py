@@ -52,16 +52,21 @@ def _fake_pyinstaller(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(sys.modules, name, module)
 
 
-def _layout(root: Path, profile: str | None, with_qm: bool) -> Path:
+def _layout(root: Path, profile: str | None, with_qm: bool, ffmpeg_notices: bool) -> Path:
     spec_dir = root / "packaging"
     spec_dir.mkdir(parents=True)
     for name in ("stemforge.spec", "icon.png", "entitlements.plist"):
         shutil.copy2(PACKAGING / name, spec_dir / name)
     (root / "src").mkdir()
+    (root / "LICENSE").write_text("MIT", encoding="utf-8")
     if profile:
         ffmpeg = spec_dir / "ffmpeg" / "out" / profile / FFMPEG_NAMES.get(profile, "ffmpeg")
         ffmpeg.parent.mkdir(parents=True)
         ffmpeg.write_bytes(b"segnaposto")
+        if ffmpeg_notices:
+            # i due testi che packaging/ffmpeg/build.sh scrive accanto al binario
+            (ffmpeg.parent / "COPYING.LGPLv2.1").write_text("LGPL", encoding="utf-8")
+            (ffmpeg.parent / "SOURCE.txt").write_text("https://ffmpeg.org/", encoding="utf-8")
     if with_qm:
         i18n = root / "resources" / "i18n"
         i18n.mkdir(parents=True)
@@ -71,14 +76,14 @@ def _layout(root: Path, profile: str | None, with_qm: bool) -> Path:
 
 def run_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, system: str, machine: str,
              env: dict[str, str] | None = None, ffmpeg_for: str | None = None,
-             with_qm: bool = True) -> dict[str, _Recorder]:
+             with_qm: bool = True, ffmpeg_notices: bool = True) -> dict[str, _Recorder]:
     for name in ("STEMFORGE_PROFILE", "STEMFORGE_TARGET_ARCH", "STEMFORGE_MACOS_MIN",
                  "STEMFORGE_CODESIGN_IDENTITY", "STEMFORGE_REQUIRE_FFMPEG"):
         monkeypatch.delenv(name, raising=False)
     for name, value in (env or {}).items():
         monkeypatch.setenv(name, value)
     _fake_pyinstaller(monkeypatch)
-    spec_dir = _layout(tmp_path / "repo", ffmpeg_for, with_qm)
+    spec_dir = _layout(tmp_path / "repo", ffmpeg_for, with_qm, ffmpeg_notices)
     monkeypatch.setattr(sys, "path", list(sys.path))
     monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
@@ -111,7 +116,6 @@ def test_legacy_intel_is_x86_64_for_catalina(tmp_path, monkeypatch):
     assert exe["icon"].endswith("icon.png")
     plist = made["BUNDLE"].kwargs["info_plist"]
     assert plist["LSMinimumSystemVersion"] == "10.15"
-    assert {"m4a", "aac"} <= set(plist["CFBundleDocumentTypes"][0]["CFBundleTypeExtensions"])
     analysis = made["Analysis"].kwargs
     assert _dest(analysis["binaries"], "ffmpeg") == ["ffmpeg"]
     assert _dest(analysis["datas"], "i18n") == ["stemforge_it.qm"]
@@ -197,3 +201,39 @@ def test_default_profile_follows_the_mac(tmp_path, monkeypatch, capsys):
 def test_macos_min_can_be_overridden(tmp_path, monkeypatch):
     made = run_spec(tmp_path, monkeypatch, "darwin", "x86_64", env={"STEMFORGE_MACOS_MIN": "10.15.7"})
     assert made["BUNDLE"].kwargs["info_plist"]["LSMinimumSystemVersion"] == "10.15.7"
+
+
+def test_open_with_covers_every_format_the_engine_reads(tmp_path, monkeypatch):
+    from stemforge.engine import audio_io
+
+    made = run_spec(tmp_path, monkeypatch, "darwin", "x86_64")
+    by_type, by_extension = made["BUNDLE"].kwargs["info_plist"]["CFBundleDocumentTypes"]
+    # dove c'e' LSItemContentTypes macOS ignora le estensioni: due voci separate
+    assert by_type["LSItemContentTypes"] == ["public.audio"]
+    assert "CFBundleTypeExtensions" not in by_type
+    assert "LSItemContentTypes" not in by_extension
+    engine = {suffix.lstrip(".") for suffix in audio_io.SUPPORTED_EXTENSIONS}
+    assert engine <= set(by_extension["CFBundleTypeExtensions"])
+    assert {"m4a", "aac", "ogg"} <= set(by_extension["CFBundleTypeExtensions"])
+
+
+def test_licenses_travel_with_the_package(tmp_path, monkeypatch):
+    made = run_spec(tmp_path, monkeypatch, "linux", "x86_64", ffmpeg_for="linux-x64")
+    datas = made["Analysis"].kwargs["datas"]
+    assert _dest(datas, "ffmpeg") == ["COPYING.LGPLv2.1", "SOURCE.txt"]
+    assert "LICENSE" in _dest(datas, ".")
+    # i testi sono dati, il binario no: niente doppioni fra binaries e datas
+    assert "ffmpeg" not in _dest(datas, "ffmpeg")
+
+
+def test_ffmpeg_without_its_license_text_is_flagged(tmp_path, monkeypatch, capsys):
+    made = run_spec(tmp_path, monkeypatch, "win32", "AMD64", ffmpeg_for="win-x64",
+                    ffmpeg_notices=False)
+    assert _dest(made["Analysis"].kwargs["binaries"], "ffmpeg") == ["ffmpeg.exe"]
+    assert _dest(made["Analysis"].kwargs["datas"], "ffmpeg") == []
+    assert "senza testo di licenza" in capsys.readouterr().err
+
+
+def test_without_ffmpeg_no_ffmpeg_folder_at_all(tmp_path, monkeypatch):
+    made = run_spec(tmp_path, monkeypatch, "darwin", "arm64")
+    assert _dest(made["Analysis"].kwargs["datas"], "ffmpeg") == []
