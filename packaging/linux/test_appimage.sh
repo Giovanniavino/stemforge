@@ -34,6 +34,7 @@ HOST_PACKAGES=(
     libwayland-client0 libwayland-cursor0 libwayland-egl1
     libdbus-1-3 libglib2.0-0
     libpulse0 libasound2
+    zlib1g libzstd1
 )
 
 install_host_libraries() {
@@ -42,8 +43,15 @@ install_host_libraries() {
     fi
     log "librerie dell'host (quelle di un desktop qualsiasi)"
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq --no-install-recommends "${HOST_PACKAGES[@]}" >/dev/null
+    local -a apt_options=()
+    # Namespace utente con il solo root mappato (rootless_container.py sul
+    # dev-box): apt non puo' cedere i download all'utente _apt e si
+    # fermerebbe su "seteuid failed". In CI (root vero) resta il sandbox.
+    if [ "$(awk '{n++; size=$3} END {print n ":" size}' /proc/self/uid_map)" = "1:1" ]; then
+        apt_options=(-o APT::Sandbox::User=root)
+    fi
+    apt-get "${apt_options[@]}" update -qq
+    apt-get "${apt_options[@]}" install -y -qq --no-install-recommends "${HOST_PACKAGES[@]}" >/dev/null
 }
 
 # Ogni libreria dei plugin di piattaforma deve risolversi nel pacchetto o

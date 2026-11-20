@@ -60,3 +60,9 @@
 
 # zlib: presente in ogni installazione, ABI ferma da vent'anni
 ^libz\.so\.1$
+
+# zstd (la chiede libQt6Core): la usano apt, rpm e systemd, quindi c'e'
+# su ogni sistema promesso, e la carica anche lo stack grafico dell'host
+# (libLLVM di Mesa). Una copia di AlmaLinux 8 (1.4.4) nel pacchetto gli
+# verrebbe imposta da LD_LIBRARY_PATH al posto della sua, piu' recente
+^libzstd\.so\.1$

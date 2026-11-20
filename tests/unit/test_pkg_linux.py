@@ -101,6 +101,7 @@ def host_patterns() -> list[re.Pattern[str]]:
     "libc.so.6", "libm.so.6", "ld-linux-x86-64.so.2", "libstdc++.so.6", "libgcc_s.so.1",
     "libGL.so.1", "libEGL.so.1", "libX11.so.6", "libxcb.so.1", "libfontconfig.so.1",
     "libwayland-client.so.0", "libdbus-1.so.3", "libglib-2.0.so.0", "libpulse.so.0",
+    "libzstd.so.1",
 ])
 def test_libraries_bound_to_the_host_stay_out(host_patterns: list[re.Pattern[str]], soname: str) -> None:
     assert bundle_libs.is_host(soname, host_patterns)
