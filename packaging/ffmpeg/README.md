@@ -82,6 +82,15 @@ Chiave di cache consigliata: hash di `VERSION`, `SOURCE_SHA256`, `build.sh`.
   FFMPEG_WORK_DIR=/tmp/stemforge-ffmpeg-build bash packaging/ffmpeg/build.sh win-x64
   ```
 
+  L'uscita finisce in `out/win-x64/`, dove `locate()` la trova senza
+  variabili. Una copia fuori dal repo (per altri checkout) può stare in
+  qualunque cartella indicata con `STEMFORGE_FFMPEG`, ma **non sotto
+  `%LOCALAPPDATA%`** se l'ambiente usa il Python del Microsoft Store
+  (come `.venv-legacy` sul dev-box): per quell'interprete AppData è
+  virtualizzata e il file "non esiste". Visto il 20-11-2026: con
+  `STEMFORGE_FFMPEG` in `%LOCALAPPDATA%\StemForge-dev` i test ffmpeg si
+  saltavano solo nell'ambiente legacy.
+
 - Una build `linux-x64` fuori da manylinux richiede
   `STEMFORGE_FFMPEG_ALLOW_HOST_GLIBC=1` ed è solo per sviluppo: il binario
   chiede la glibc dell'host.
