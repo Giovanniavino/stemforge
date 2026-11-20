@@ -55,19 +55,26 @@ def _packets(m4a: bytes) -> list[bytes]:
     return packets
 
 
-def _tones(samplerate: int) -> np.ndarray:
+def _tones(samplerate: int, channels: int = 2) -> np.ndarray:
     t = np.arange(int(samplerate * SECONDS)) / samplerate
-    return np.stack([0.5 * np.sin(2 * np.pi * hz * t) for hz in CHANNEL_HZ]).astype(np.float32)
+    rows = [0.5 * np.sin(2 * np.pi * hz * t) for hz in CHANNEL_HZ[:channels]]
+    return np.stack(rows).astype(np.float32)
+
+
+def adts_bytes(tmp_path: Path, samplerate: int, channels: int = 2) -> tuple[bytes, int]:
+    """Un flusso ADTS e il numero di frame audio da cui nasce."""
+    source = _tones(samplerate, channels)
+    m4a = ffmpeg.encode_fixture(source, samplerate, tmp_path / "base.m4a", "aac")
+    packets = _packets(m4a.read_bytes())
+    stream = b"".join(_adts_header(len(p), samplerate, channels) + p for p in packets)
+    return stream, source.shape[1]
 
 
 def write_adts(tmp_path: Path, samplerate: int) -> tuple[Path, int]:
-    source = _tones(samplerate)
-    m4a = ffmpeg.encode_fixture(source, samplerate, tmp_path / "base.m4a", "aac")
-    packets = _packets(m4a.read_bytes())
-    stream = b"".join(_adts_header(len(p), samplerate, 2) + p for p in packets)
+    stream, frames = adts_bytes(tmp_path, samplerate)
     dest = tmp_path / "nudo.aac"
     dest.write_bytes(stream)
-    return dest, source.shape[1]
+    return dest, frames
 
 
 @pytest.mark.parametrize("samplerate", [22050, 44100, 48000])
@@ -89,3 +96,22 @@ def test_adts_without_sync_is_not_audio(tmp_path):
     broken.write_bytes(bytes(b ^ 0xFF for b in path.read_bytes()[:20000]))
     with pytest.raises(ffmpeg.DecodeError):
         ffmpeg.decode(broken)
+
+
+def test_format_change_mid_stream_keeps_the_first_shape(tmp_path):
+    # una registrazione radio in ADTS puo' passare da stereo a mono e
+    # cambiare sample rate a meta': l'array resta [frames, canali iniziali]
+    # al sample rate iniziale, e il mono finisce in entrambi i canali
+    stereo, stereo_frames = adts_bytes(tmp_path, 44100, 2)
+    mono, mono_frames = adts_bytes(tmp_path, 48000, 1)
+    path = tmp_path / "cambia.aac"
+    path.write_bytes(stereo + mono)
+    decoded, rate = ffmpeg.decode(path)
+    assert rate == 44100 and decoded.shape[1] == 2
+    expected = stereo_frames + round(mono_frames * 44100 / 48000)
+    assert abs(decoded.shape[0] - expected) <= 2 * LENGTH_SLACK
+    tail = decoded[-44100 : -44100 // 4, :]
+    for channel in range(2):
+        spectrum = np.abs(np.fft.rfft(tail[:, channel] * np.hanning(len(tail))))
+        found = float(np.argmax(spectrum)) * 44100 / len(tail)
+        assert found == pytest.approx(CHANNEL_HZ[0], abs=PITCH_TOL_HZ)
