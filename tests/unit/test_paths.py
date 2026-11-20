@@ -13,6 +13,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 from stemforge.engine import paths
 
 _REAL_OS_NAME = os.name
@@ -71,9 +73,39 @@ def test_defaults_read_the_real_environment(monkeypatch, tmp_path):
     assert paths.calibration_path() == tmp_path / "c.json"
 
 
+# Le tre forme con cui si cambia la piattaforma per tutto il processo:
+# setattr sul modulo os/sys, setattr con il nome puntato in una stringa e
+# l'assegnamento diretto (ma non il confronto con ==).
 _GLOBAL_PLATFORM_PATCH = re.compile(
     r"setattr\(\s*[\w.]*\b(?:os\s*,\s*[\"']name[\"']|sys\s*,\s*[\"']platform[\"'])"
+    r"|setattr\(\s*[\"'](?:os\.name|sys\.platform)[\"']"
+    r"|\b(?:os\.name|sys\.platform)\s*=(?!=)"
 )
+
+
+# Gli esempi si compongono a pezzi: scritti per intero, questo file
+# farebbe scattare la sua stessa guardia.
+_NAME, _PLATFORM, _ASSIGN = "name", "platform", "="
+
+
+@pytest.mark.parametrize("line", [
+    f'monkeypatch.setattr(paths.os, "{_NAME}", "nt")',
+    f"monkeypatch.setattr(sys, '{_PLATFORM}', 'darwin')",
+    f'monkeypatch.setattr("os.{_NAME}", "nt")',
+    f"os.{_NAME} {_ASSIGN} 'nt'",
+    f"sys.{_PLATFORM}{_ASSIGN} 'win32'",
+])
+def test_the_guard_recognises_every_global_patch(line):
+    assert _GLOBAL_PLATFORM_PATCH.search(line)
+
+
+@pytest.mark.parametrize("line", [
+    "assert os.name == _REAL_OS_NAME",
+    'paths.data_dir("win32", env, home)',
+    "monkeypatch.setattr(paths, 'free_bytes', fake)",
+])
+def test_the_guard_ignores_harmless_lines(line):
+    assert not _GLOBAL_PLATFORM_PATCH.search(line)
 
 
 def test_no_test_patches_the_platform_globally():
