@@ -31,6 +31,12 @@ REQUIRED_MODULES="ssl, ctypes, lzma, bz2, zlib, sqlite3"
 # porterebbe nel pacchetto MIT (build del 20-11-2026), e a un'app grafica
 # non serve. Cambiare queste opzioni cambia lo stamp: la cache si rifa'.
 CONFIGURE_OPTIONS="--enable-shared --with-ensurepip=no --without-readline"
+# \$$ORIGIN: make toglie un $, il backslash protegge l'altro dalla shell
+# della ricetta di link. Con il solo $$ORIGIN la shell espandeva $ORIGIN a
+# vuoto e l'rpath diventava "/../lib" (build del 20-11-2026): python3.12
+# caricava la libpython 3.12.15 di AlmaLinux al posto della nostra.
+# shellcheck disable=SC2016
+RPATH_LDFLAGS='-Wl,-rpath,\$$ORIGIN/../lib'
 
 die() { echo "build_python.sh: ERRORE: $*" >&2; exit 1; }
 log() { echo "build_python.sh: $*" >&2; }
@@ -40,7 +46,7 @@ PREFIX="$1"
 STAMP="$PREFIX/.stemforge-python"
 PYTHON="$PREFIX/bin/python3.12"
 
-BUILD_ID="$PY_VERSION $PY_SHA256 $CONFIGURE_OPTIONS"
+BUILD_ID="$PY_VERSION $PY_SHA256 $CONFIGURE_OPTIONS $RPATH_LDFLAGS"
 
 if [ -x "$PYTHON" ] && [ "$(cat "$STAMP" 2>/dev/null)" = "$BUILD_ID" ]; then
     log "Python $PY_VERSION gia' in $PREFIX"
@@ -70,16 +76,12 @@ compile() {
     local source="$1"
     (
         cd "$source"
-        # $$ORIGIN: il Makefile lo passa al linker come $ORIGIN, cosi'
-        # python3.12 trova la propria libpython senza LD_LIBRARY_PATH
-        # (ma non chi lo raggiunge dal symlink del venv: build_appimage.sh).
         # Niente --enable-optimizations: il tempo dell'app e' in torch, non
         # nell'interprete, e la PGO triplica la durata della build.
-        # SC2016: $$ORIGIN e' per make e ld, non per bash;
         # SC2086: CONFIGURE_OPTIONS va diviso in parole
-        # shellcheck disable=SC2016,SC2086
+        # shellcheck disable=SC2086
         ./configure --prefix="$PREFIX" $CONFIGURE_OPTIONS \
-            LDFLAGS='-Wl,-rpath,$$ORIGIN/../lib' >/dev/null
+            LDFLAGS="$RPATH_LDFLAGS" >/dev/null
         make -j"$(nproc)" >/dev/null
         rm -rf "$PREFIX"
         make install >/dev/null
@@ -87,13 +89,19 @@ compile() {
 }
 
 check_result() {
-    "$PYTHON" - "$REQUIRED_MODULES" <<'PY' || die "Python costruito senza un modulo richiesto"
+    # Senza LD_LIBRARY_PATH: deve bastare l'rpath. La versione la dice la
+    # libpython caricata, quindi una libpython di sistema qui si vede.
+    env -u LD_LIBRARY_PATH "$PYTHON" - "$REQUIRED_MODULES" "$PY_VERSION" <<'PY' \
+        || die "Python costruito male (vedi sopra)"
 import importlib
+import platform
 import sys
 import sysconfig
 
 if not sysconfig.get_config_var("Py_ENABLE_SHARED"):
     sys.exit("libpython non condivisa: PyInstaller non potrebbe usarla")
+if platform.python_version() != sys.argv[2]:
+    sys.exit(f"caricata la libpython {platform.python_version()}, non la {sys.argv[2]}: rpath sbagliato")
 for name in (part.strip() for part in sys.argv[1].split(",")):
     importlib.import_module(name)
 PY

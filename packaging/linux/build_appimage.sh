@@ -123,10 +123,11 @@ make_venv() {
 run_pyinstaller() {
     log "PyInstaller (profilo linux-x64)"
     # PyInstaller cerca la libpython con ldd sul python del venv, un
-    # symlink: li' $ORIGIN/../lib non porta al nostro prefisso e ldd
-    # risolve la libpython3.12 di sistema dell'immagine, se c'e' (build del
-    # 20-11-2026: entrata la 3.12.15 di AlmaLinux accanto alla stdlib
-    # 3.12.16). LD_LIBRARY_PATH gli fa trovare la nostra.
+    # symlink: ldd calcola $ORIGIN dal percorso del symlink, li'
+    # $ORIGIN/../lib non porta al nostro prefisso e si risolve la
+    # libpython3.12 di sistema dell'immagine (build del 20-11-2026: entrata
+    # la 3.12.15 di AlmaLinux). LD_LIBRARY_PATH gli fa trovare la nostra;
+    # cmp sotto lo verifica.
     (
         cd "$REPO"
         STEMFORGE_PROFILE=linux-x64 LD_LIBRARY_PATH="$PYTHON_PREFIX/lib" "$VENV/bin/python" -m PyInstaller \

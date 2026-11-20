@@ -281,6 +281,22 @@ def test_python_for_pyinstaller_is_pinned_and_shared() -> None:
     assert "--without-readline" in options
     assert re.search(r'^\s*\./configure --prefix="\$PREFIX" \$CONFIGURE_OPTIONS ', script, re.MULTILINE)
     assert "$CONFIGURE_OPTIONS" in _shell_value(script, "BUILD_ID"), "opzioni diverse, stessa cache"
+    assert "$RPATH_LDFLAGS" in _shell_value(script, "BUILD_ID")
+
+
+def test_python_rpath_survives_make_and_the_recipe_shell() -> None:
+    """L'rpath passa da make ($$ -> $) e poi dalla shell della ricetta di link.
+
+    Con il solo $$ORIGIN la shell espande $ORIGIN a vuoto: rpath "/../lib",
+    e python3.12 carica la libpython di sistema (build del 20-11-2026).
+    """
+    script = (LINUX / "build_python.sh").read_text(encoding="utf-8")
+    match = re.search(r"^RPATH_LDFLAGS='([^']*)'$", script, re.MULTILINE)
+    assert match, "RPATH_LDFLAGS non trovata"
+    after_make = match.group(1).replace("$$", "$")
+    after_shell = re.sub(r"(?<!\\)\$\w+", "", after_make).replace("\\$", "$")
+    assert after_shell == "-Wl,-rpath,$ORIGIN/../lib"
+    assert 'LDFLAGS="$RPATH_LDFLAGS"' in script
 
 
 def test_appimage_build_uses_the_shared_python() -> None:

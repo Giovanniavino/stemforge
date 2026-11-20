@@ -45,13 +45,16 @@ install_host_libraries() {
     export DEBIAN_FRONTEND=noninteractive
     local -a apt_options=()
     # Namespace utente con il solo root mappato (rootless_container.py sul
-    # dev-box): apt non puo' cedere i download all'utente _apt e si
-    # fermerebbe su "seteuid failed". In CI (root vero) resta il sandbox.
+    # dev-box): nessun altro utente o gruppo esiste. apt non puo' cedere i
+    # download all'utente _apt ("seteuid failed"), e il postinst di
+    # fontconfig-config fa chown root:staff sulla cartella dei font locali
+    # solo se la crea lui (visto il 20-11-2026). In CI (root vero) nulla.
     if [ "$(awk '{n++; size=$3} END {print n ":" size}' /proc/self/uid_map)" = "1:1" ]; then
         apt_options=(-o APT::Sandbox::User=root)
+        mkdir -p /usr/local/share/fonts
     fi
     apt-get "${apt_options[@]}" update -qq
-    apt-get "${apt_options[@]}" install -y -qq --no-install-recommends "${HOST_PACKAGES[@]}" >/dev/null
+    apt-get "${apt_options[@]}" install -y -qq --no-install-recommends "${HOST_PACKAGES[@]}"
 }
 
 # Ogni libreria dei plugin di piattaforma deve risolversi nel pacchetto o
