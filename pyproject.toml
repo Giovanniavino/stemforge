@@ -49,19 +49,20 @@ version = { attr = "stemforge.__version__" }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.pytest.ini_options]
 # Famiglie di test (BUILD_SPEC §10.6). Il giro normale esclude cio' che
 # pesa; "-m <marker>" sulla riga di comando vince su quello di addopts
 # (pytest usa l'ultimo -m), quindi "pytest -m slow" funziona senza toccare
 # questa sezione. compat NON e' escluso: costa pochi secondi (un HTDemucs
 # minuscolo, niente pesi) e deve girare a ogni push con entrambe le pile
-# di torch; e' anche l'unico guardiano delle API di torch fra un rilascio
-# e l'altro. --strict-markers: un marker scritto male e' un errore, non
+# di torch (i compat con i pesi veri sono anche slow: restano fuori);
+# e' l'unico guardiano delle API di torch fra un rilascio e l'altro.
+# --strict-markers: un marker scritto male e' un errore, non
 # un test che sparisce in silenzio dal giro giusto.
-[tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "slow: Demucs vero su CPU (invariante, sotto-modello, scalabilita'); release e settimanale",
-    "compat: il motore con torch 2.2.2 e 2.10 senza pesi; ogni push, entrambe le pile",
+    "compat: il motore con torch 2.2.2 e 2.10; ogni push, entrambe le pile (con pesi veri: anche slow)",
     "fuzz: Hypothesis su modello, pianificatore, protocollo, file audio estremi; su richiesta",
     "chaos: worker ucciso, disco pieno, rete che cade, file di stato corrotti; su richiesta",
     "soak: batch lunghi, brano di 29 minuti, memoria e processi monitorati; su richiesta",

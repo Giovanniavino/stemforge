@@ -159,6 +159,7 @@ check-min-os:
 		--arch $(DMG_ARCH_$(PROFILE))
 
 selftest:
+	@mkdir -p $(WORK)
 	"$(VPY)" packaging/ci/run_selftest.py "$(APP_EXE)" $(WORK)/selftest.json $(SELFTEST_ARGS)
 
 package: package-$(PROFILE)
@@ -182,15 +183,18 @@ selftest-package: selftest-package-$(PROFILE)
 
 # il DMG montato in sola lettura, come lo apre l'utente
 selftest-package-legacy-intel selftest-package-mac-arm64:
+	@mkdir -p $(WORK)
 	@mnt="$$(mktemp -d)" && hdiutil attach "$(DMG)" -nobrowse -readonly -mountpoint "$$mnt" && \
 	"$(VPY)" packaging/ci/run_selftest.py "$$mnt/StemForge.app/Contents/MacOS/StemForge" \
 		$(WORK)/selftest-dmg.json $(SELFTEST_ARGS); rc=$$?; hdiutil detach "$$mnt" -force; exit $$rc
 
 # installa in silenzio, collauda l'app installata, disinstalla
 selftest-package-win-x64:
+	@mkdir -p $(WORK)
 	"$(VPY)" packaging/ci/verify_windows_installer.py "$(SETUP)" $(WORK)/installer.json
 
 selftest-package-linux-x64:
+	@mkdir -p $(WORK)
 	APPIMAGE_EXTRACT_AND_RUN=1 "$(VPY)" packaging/ci/run_selftest.py "$(APPIMAGE)" \
 		$(WORK)/selftest-appimage.json $(SELFTEST_ARGS)
 
