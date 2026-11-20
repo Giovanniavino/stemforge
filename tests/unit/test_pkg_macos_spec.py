@@ -10,7 +10,10 @@ né che l'app parta (serve il Mac).
 
 from __future__ import annotations
 
+import ast
+import importlib.util
 import platform
+import re
 import shutil
 import sys
 import types
@@ -237,3 +240,32 @@ def test_ffmpeg_without_its_license_text_is_flagged(tmp_path, monkeypatch, capsy
 def test_without_ffmpeg_no_ffmpeg_folder_at_all(tmp_path, monkeypatch):
     made = run_spec(tmp_path, monkeypatch, "darwin", "arm64")
     assert _dest(made["Analysis"].kwargs["datas"], "ffmpeg") == []
+
+
+def _pyinstaller_reads() -> dict[str, set[str]]:
+    """Le opzioni che il PyInstaller installato legge davvero, dal suo sorgente."""
+    found = importlib.util.find_spec("PyInstaller")
+    if found is None or found.origin is None:
+        pytest.skip("PyInstaller non installato in questo ambiente")
+    building = Path(found.origin).parent / "building"
+    read_kwargs: set[str] = set()
+    for name in ("api.py", "osx.py"):
+        source = (building / name).read_text(encoding="utf-8")
+        read_kwargs |= set(re.findall(r"kwargs\.get\(\s*['\"](\w+)['\"]", source))
+    tree = ast.parse((building / "build_main.py").read_text(encoding="utf-8"))
+    init = next(node for cls in tree.body if isinstance(cls, ast.ClassDef) and cls.name == "Analysis"
+                for node in cls.body if isinstance(node, ast.FunctionDef) and node.name == "__init__")
+    analysis = {arg.arg for arg in init.args.args + init.args.kwonlyargs}
+    return {"Analysis": analysis, "EXE": read_kwargs, "COLLECT": read_kwargs, "BUNDLE": read_kwargs}
+
+
+@pytest.mark.parametrize("system, machine", [("darwin", "x86_64"), ("darwin", "arm64"),
+                                             ("win32", "AMD64"), ("linux", "x86_64")])
+def test_every_option_is_one_pyinstaller_reads(tmp_path, monkeypatch, system, machine):
+    # EXE, COLLECT e BUNDLE prendono **kwargs e ignorano in silenzio un nome
+    # sbagliato: l'analisi vera su Windows non se ne accorgerebbe mai
+    reads = _pyinstaller_reads()
+    made = run_spec(tmp_path, monkeypatch, system, machine)
+    for kind, accepted in reads.items():
+        if kind in made:
+            assert set(made[kind].kwargs) <= accepted, (kind, set(made[kind].kwargs) - accepted)
