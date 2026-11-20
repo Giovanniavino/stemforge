@@ -104,13 +104,22 @@ def test_lossless_loads_exactly(tmp_path, fmt, subtype, rate, channels):
     np.testing.assert_allclose(source.data, expected, atol=QUANT[subtype] * 3 + 1e-6)
 
 
-@pytest.mark.parametrize(("fmt", "subtype"), LOSSY)
-def test_lossy_loads_at_original_rate(tmp_path, fmt, subtype):
-    audio = multichannel(44100, 2)
-    source = audio_io.load(write(tmp_path / f"x.{fmt}", audio, 44100, subtype))
-    assert source.samplerate == 44100
+# Le frequenze che ogni codec sa scrivere: MPEG-1/2/2.5 layer III arriva
+# a 48 kHz, Vorbis copre tutta la gamma di §5.7.
+LOSSY_RATES = [(fmt, subtype, rate) for fmt, subtype in LOSSY for rate in RATES
+               if fmt != "mp3" or rate <= 48000]
+
+
+@pytest.mark.parametrize(("fmt", "subtype", "rate"), LOSSY_RATES, ids=lambda v: str(v))
+def test_lossy_loads_at_original_rate_and_reconstructs(tmp_path, fake_backends, fmt, subtype,
+                                                       rate):
+    path = write(tmp_path / f"brano.{fmt}", multichannel(rate, 2), rate, subtype)
+    source = audio_io.load(path)
+    assert source.samplerate == rate
     assert abs(source.duration_s - SECONDS) < 0.1  # ritardo del codec, mai 100 ms
     assert float(np.max(np.abs(source.data))) > 0.05
+    result, _ = _run(path, tmp_path, fake_backends)
+    assert_invariant(result.out_dir, path)
 
 
 # -- invariante e lunghezza attraverso la pipeline ----------------------------
@@ -190,9 +199,14 @@ def _app_ffmpeg():
     return ffmpeg
 
 
-@pytest.mark.parametrize("rate", [44100, 48000])
-@pytest.mark.parametrize(("codec", "name", "lossless"),
-                         [("aac", "brano.m4a", False), ("alac", "brano.m4a", True)])
+# L'encoder AAC di FFmpeg arriva a 96 kHz; ALAC copre tutta la gamma di §5.7.
+FFMPEG_CASES = (
+    [("aac", "brano.m4a", False, rate) for rate in RATES if rate <= 96000]
+    + [("alac", "brano.m4a", True, rate) for rate in RATES]
+)
+
+
+@pytest.mark.parametrize(("codec", "name", "lossless", "rate"), FFMPEG_CASES, ids=lambda v: str(v))
 def test_ffmpeg_formats_reconstruct(tmp_path, fake_backends, codec, name, lossless, rate):
     ffmpeg = _app_ffmpeg()
     audio = multichannel(rate, 2)
