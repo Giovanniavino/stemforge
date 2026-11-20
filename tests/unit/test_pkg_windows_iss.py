@@ -67,6 +67,14 @@ def test_per_user_install_without_admin():
     assert setup["DefaultDirName"].startswith("{autopf}")
 
 
+def test_compressor_runs_outside_the_32_bit_compiler():
+    """Con l'app vera (~600 MB) ISCC a 32 bit finiva la memoria a metà
+    compressione: l'LZMA deve girare nel processo separato a 64 bit."""
+    setup = _setup()
+    assert setup["Compression"].startswith("lzma2")
+    assert setup["LZMAUseSeparateProcess"] == "yes"
+
+
 def test_identity_matches_the_verifier():
     verifier = _verifier_constants()
     assert _setup()["AppId"] == "{" + str(verifier["APP_ID"])

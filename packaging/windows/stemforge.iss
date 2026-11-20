@@ -66,7 +66,11 @@ UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 Compression=lzma2/ultra64
 SolidCompression=yes
-LZMANumBlockThreads=4
+; ISCC è a 32 bit: con ultra64 su ~600 MB e 4 blocchi in parallelo il
+; compilatore esauriva lo spazio di indirizzi ("Out of memory", visto sul
+; dev-box). Il processo separato è islzma64.exe sui Windows a 64 bit.
+LZMAUseSeparateProcess=yes
+LZMANumBlockThreads=2
 WizardStyle=modern
 ; la lingua si chiede solo se quella di Windows non è né italiano né inglese
 ShowLanguageDialog=auto
