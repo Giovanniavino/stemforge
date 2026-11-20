@@ -89,7 +89,7 @@ Riparti da zero (ultima riga della sezione 0), poi:
   - [ ] zip **senza** FFmpeg: riquadro giallo "!!! ATTENZIONE !!!" che
         dice che m4a, aac e alac non si apriranno. Mai silenzio.
 - [ ] Sezione D, colonna Intel: stessi esiti del DMG. Unica differenza
-      ammessa: senza FFmpeg nello zip, la riga D3 dice
+      ammessa: senza FFmpeg nello zip, le righe D3 e D7 dicono
       `No such file or directory`.
 - [ ] PyAV non c'è nell'ambiente di build (D9):
       `~/Library/Application\ Support/StemForge/build-env/bin/python -m pip show av`
@@ -205,8 +205,13 @@ va incollato una volta prima delle righe.
 | D4 | `ls "$A/Contents/Frameworks" \| grep -iE '^av($\|\.)'` | nessuna riga: PyAV (GPLv3) assente, D9 | idem |
 | D5 | `ls "$A/Contents/Resources/i18n"` | i file `.qm` delle traduzioni, se la versione ne ha | idem |
 | D6 | `codesign --verify --strict "$A" && echo firma-ok` | `firma-ok` (anche ad-hoc) | idem |
+| D7 | `ls "$A/Contents/Frameworks/ffmpeg"` | `COPYING.LGPLv2.1`, `SOURCE.txt`, `ffmpeg`: la licenza LGPL viaggia col binario | idem |
+| D8 | `ls "$A/Contents/Resources" \| grep -E '^(LICENSE\|THIRD_PARTY_NOTICES)'` | `LICENSE` e `THIRD_PARTY_NOTICES` | idem |
+| D9 | `plutil -p "$A/Contents/Info.plist" \| grep -c CFBundleTypeName` | `2` (tipo audio + estensioni, per "Apri con" anche su ogg) | idem |
 
-- [ ] D1–D6 danno l'esito della colonna della macchina.
+- [ ] D1–D9 danno l'esito della colonna della macchina. Con lo zip senza
+      FFmpeg, D3 dice `No such file or directory` e D7 non trova la
+      cartella: è l'unica differenza ammessa.
 
 ## Esito
 
