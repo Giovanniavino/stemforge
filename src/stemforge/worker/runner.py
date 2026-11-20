@@ -16,7 +16,7 @@ from stemforge.engine import audio_io, calibrate
 from stemforge.engine.contract import BackendUnavailable, CancelledError
 from stemforge.engine.device import prepare_runtime_env
 from stemforge.model.job import SeparationJob
-from stemforge.worker import protocol
+from stemforge.worker import planning, protocol
 from stemforge.worker.pipeline import run_job
 
 __all__ = ["run_job", "main"]
@@ -48,7 +48,7 @@ def _prepare() -> int:
         # su Apple Silicon qui si verifica anche la GPU (MPS) contro la CPU
         device = calibrate.resolve_job_device("auto")
         calibrate.first_run_calibration(device)
-        marker = calibrate.calibration_path().parent / "prepared.json"
+        marker = planning.prepared_marker()
         marker.parent.mkdir(parents=True, exist_ok=True)
         marker.write_text(json.dumps({"models": list(models)}), encoding="utf-8")
     except BackendUnavailable as exc:

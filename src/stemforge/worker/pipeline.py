@@ -287,6 +287,30 @@ def _job_device(job: SeparationJob, backends: BackendCache) -> str:
     return calibrate.resolve_job_device(job.device)
 
 
+def _separate_and_write(
+    job: SeparationJob,
+    plan_: Plan,
+    source: audio_io.SourceAudio,
+    out_dir: Path,
+    backends: BackendCache,
+    progress: _Progress,
+    emit: Emit,
+    should_cancel: Callable[[], bool],
+) -> JobResult:
+    work = audio_io.resample(source.data, source.samplerate, audio_io.MODEL_SAMPLERATE)
+    state = _JobState(device=_job_device(job, backends))
+    _execute_passes(
+        job, plan_, work, backends, progress, state,
+        source.duration_s, emit, should_cancel,
+    )
+    write = assemble.effective_write(job, state.unavailable)
+    outputs = assemble.assemble_outputs(write, source, state.stage1, state.stems)
+    return assemble.write_all(
+        job, write, source, out_dir, outputs, state.wet_vocals.get("wet"),
+        plan_, state.warnings, emit,
+    )
+
+
 def run_job(
     job: SeparationJob,
     emit: Emit,
@@ -305,19 +329,12 @@ def run_job(
     progress = _Progress(emit, weights)
     out_dir = folder.allocate_out_dir(job.out_dir, job.source.name)
     emit(protocol.Started(out_dir=str(out_dir)))
-
-    work = audio_io.resample(source.data, source.samplerate, audio_io.MODEL_SAMPLERATE)
-    state = _JobState(device=_job_device(job, backends))
-    _execute_passes(
-        job, plan_, work, backends, progress, state,
-        source.duration_s, emit, should_cancel,
-    )
-    write = assemble.effective_write(job, state.unavailable)
-    outputs = assemble.assemble_outputs(write, source, state.stage1, state.stems)
-    result = assemble.write_all(
-        job, write, source, out_dir, outputs, state.wet_vocals.get("wet"),
-        plan_, state.warnings, emit,
-    )
+    try:
+        result = _separate_and_write(job, plan_, source, out_dir, backends, progress, emit, should_cancel)
+    except BaseException:
+        # una cartella a metà sembrerebbe un risultato valido (anche Ctrl+C in CLI)
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
     for message in result.warnings:
         emit(protocol.Warning_(message=message))
     emit(protocol.Done(out_dir=str(result.out_dir), manifest=str(result.out_dir / "manifest.json")))

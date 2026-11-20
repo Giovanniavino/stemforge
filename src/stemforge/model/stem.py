@@ -76,16 +76,6 @@ FT_SOURCES: tuple[StemKind, ...] = (
     StemKind.VOCALS,
 )
 
-# Le sei sorgenti di htdemucs_6s, nell'ordine del modello.
-SIX_SOURCES: tuple[StemKind, ...] = (
-    StemKind.DRUMS,
-    StemKind.BASS,
-    StemKind.OTHER,
-    StemKind.VOCALS,
-    StemKind.GUITAR,
-    StemKind.PIANO,
-)
-
 
 def derived_of(base: StemKind) -> frozenset[StemKind]:
     """Tutti i derivati di uno stem base."""

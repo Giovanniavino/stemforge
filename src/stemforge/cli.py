@@ -18,9 +18,7 @@ from stemforge.model.job import DEVICES, FORMATS, QUALITIES, SeparationJob
 from stemforge.model.stem import StemKind
 from stemforge.worker import protocol
 from stemforge.worker.pipeline import BackendCache, run_job
-
-# Il margine di sovrastima della stima mostrata (§8.2.1).
-ESTIMATE_MARGIN = 1.15
+from stemforge.worker.planning import ESTIMATE_MARGIN
 
 
 def _parse_stems(raw: str) -> tuple[StemKind, ...]:

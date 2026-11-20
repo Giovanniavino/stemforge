@@ -27,6 +27,9 @@ def _collect_audio_files(paths: list[Path]) -> tuple[list[Path], int]:
     for path in paths:
         if path.is_dir():
             for child in sorted(path.rglob("*")):
+                # le cartelle di output di StemForge non si ri-separano
+                if (child.parent / "manifest.json").is_file():
+                    continue
                 if child.is_file():
                     if is_supported(child):
                         accepted.append(child)
