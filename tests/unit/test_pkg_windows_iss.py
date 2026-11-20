@@ -43,15 +43,16 @@ def _unquote(value: str) -> str:
     return value[1:-1].replace('""', '"') if value.startswith('"') else value
 
 
-def _verifier_constants() -> dict[str, object]:
+def _verifier_constants(source: Path = INTEGRATION) -> dict[str, object]:
     """Costanti del verificatore lette senza importarlo: usa winreg, che esiste solo su Windows."""
-    tree = ast.parse(INTEGRATION.read_text(encoding="utf-8"))
-    return {
-        node.targets[0].id: ast.literal_eval(node.value)
-        for node in tree.body
-        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name)
-        and isinstance(node.value, (ast.Constant, ast.Tuple))
-    }
+    constants: dict[str, object] = {}
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            try:
+                constants[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                continue  # non è una costante letterale (un percorso, un alias di tipo)
+    return constants
 
 
 def _defines() -> dict[str, str]:
@@ -140,6 +141,9 @@ def test_desktop_icon_is_optional_and_off_by_default():
     desktop = [line for line in _section("Icons") if "{autodesktop}" in line]
     assert desktop and all("Tasks: desktopicon" in line for line in desktop)
     assert any("{autoprograms}" in line for line in _section("Icons"))
+    # il collaudo la sceglie con /TASKS=<nome>: un nome diverso la lascerebbe spenta senza errori
+    verifier = _verifier_constants(ROOT / "packaging" / "ci" / "verify_windows_installer.py")
+    assert verifier["_DESKTOP_TASK"] == "desktopicon"
 
 
 def test_uninstall_asks_before_deleting_and_never_in_silent_mode():

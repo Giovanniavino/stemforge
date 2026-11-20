@@ -38,17 +38,22 @@ _INSTALL_TIMEOUT_S = 15 * 60
 _UNINSTALL_WAIT_S = 180
 _OPEN_WITH_ALIVE_S = 10
 _LONG_PATH_MIN_CHARS = 200
+_DESKTOP_TASK = "desktopicon"  # il nome del compito in [Tasks] di stemforge.iss
+# (nome, cartella chiesta con /DIR o None per la predefinita, icona sul desktop scelta)
+Case = tuple[str, Path | None, bool]
 
 
-def _run_setup(setup: Path, target: Path | None, log: Path) -> int:
+def _run_setup(setup: Path, target: Path | None, log: Path, desktop: bool = False) -> int:
     command = [str(setup), "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", f"/LOG={log}"]
     if target is not None:
         command.append(f"/DIR={target}")
+    if desktop:
+        command.append(f"/TASKS={_DESKTOP_TASK}")
     return subprocess.run(command, timeout=_INSTALL_TIMEOUT_S).returncode
 
 
-def _install(setup: Path, target: Path | None, log: Path) -> Path:
-    code = _run_setup(setup, target, log)
+def _install(setup: Path, target: Path | None, log: Path, desktop: bool) -> Path:
+    code = _run_setup(setup, target, log, desktop)
     installed = wi.installed_dir()
     if code != 0 or installed is None or not (installed / wi.APP_EXE).is_file():
         print(log.read_text(encoding="utf-8", errors="replace") if log.exists() else "nessun log")
@@ -74,9 +79,9 @@ def _choices(associations: dict[str, dict]) -> dict[str, dict]:
     return {ext: {k: v for k, v in values.items() if k != "hkcu_key"} for ext, values in associations.items()}
 
 
-def _check_installed(app_dir: Path, associations: dict[str, dict[str, str | None]]) -> list[str]:
+def _check_installed(app_dir: Path, associations: dict[str, dict[str, str | None]], desktop: bool) -> list[str]:
     exe = app_dir / wi.APP_EXE
-    lines = [wi.check_start_menu(exe), wi.check_no_desktop_icon(), wi.check_open_with(exe)]
+    lines = [wi.check_start_menu(exe), wi.check_desktop_icon(exe, desktop), wi.check_open_with(exe)]
     # da installata la chiave .ext in HKCU può esserci in più (OpenWithProgids):
     # conta che il predefinito e la UserChoice non cambino
     after = _choices(wi.default_associations())
@@ -107,17 +112,19 @@ def _selftest(exe: Path, report: Path) -> bool:
     return subprocess.run(command).returncode == 0
 
 
-def _run_case(setup: Path, name: str, target: Path | None, report: Path, args: argparse.Namespace) -> dict:
+def _run_case(setup: Path, case: Case, report: Path, args: argparse.Namespace) -> dict:
+    name, target, desktop = case
     print(f"\n=== {name}: {target or 'cartella predefinita'}", flush=True)
     associations = wi.default_associations()
     data_before = wi.models_footprint()
-    result: dict = {"case": name, "requested_dir": str(target) if target else None, "ok": False}
+    result: dict = {"case": name, "requested_dir": str(target) if target else None,
+                    "desktop_icon": desktop, "ok": False}
     log = report.with_name(f"{report.stem}.{name}.install.log")
-    app_dir = _install(setup, target, log)
+    app_dir = _install(setup, target, log, desktop)
     try:
         result.update(installed_dir=str(app_dir), installed_dir_chars=len(str(app_dir)),
                       installed_bytes=wi.tree_size(app_dir), longest_path_chars=wi.longest_path(app_dir))
-        result["checks"] = _check_installed(app_dir, associations)
+        result["checks"] = _check_installed(app_dir, associations, desktop)
         if not args.skip_selftest:
             result["selftest_report"] = str(report.with_name(f"{report.stem}.{name}.selftest.json"))
             result["selftest_ok"] = _selftest(app_dir / wi.APP_EXE, Path(result["selftest_report"]))
@@ -166,13 +173,14 @@ def _probe_long_dir(setup: Path, target: Path, report: Path) -> dict:
     return {**result, "accepted": False, "max_dir_chars": limit}
 
 
-def _cases(args: argparse.Namespace, scratch: Path) -> list[tuple[str, Path | None]]:
+def _cases(args: argparse.Namespace, scratch: Path) -> list[Case]:
     if args.dir:
-        return [("dir", Path(args.dir))]
+        return [("dir", Path(args.dir), False)]
     if not args.matrix:
-        return [("temporanea", scratch / "StemForge")]
+        return [("temporanea", scratch / "StemForge", False)]
     accented = scratch / "Cartella con spazi àèéìòù ÄÖÜ ñ" / "StemForge"
-    return [("predefinita", None), ("spazi-accenti", accented)]
+    # l'icona sul desktop (opzionale) si prova una volta: va sul Desktop vero, anche se è in OneDrive
+    return [("predefinita", None, False), ("spazi-accenti", accented, True)]
 
 
 def _long_cases(setup: Path, scratch: Path, report: Path, args: argparse.Namespace) -> list[dict]:
@@ -180,7 +188,7 @@ def _long_cases(setup: Path, scratch: Path, report: Path, args: argparse.Namespa
     poi il collaudo completo nella cartella più lunga che l'installer accetta."""
     probe = _probe_long_dir(setup, _long_dir(scratch), report)
     target = _long_dir(scratch) if probe["accepted"] else _dir_of_length(scratch, probe["max_dir_chars"])
-    return [probe, _run_case(setup, "lungo", target, report, args)]
+    return [probe, _run_case(setup, ("lungo", target, False), report, args)]
 
 
 def main() -> int:
@@ -205,8 +213,8 @@ def main() -> int:
               flush=True)
     summary = {"installer": str(setup), "installer_bytes": setup.stat().st_size,
                "msix_virtualized_localappdata": str(container) if container else None, "cases": []}
-    for name, target in _cases(args, scratch):
-        summary["cases"].append(_run_case(setup, name, target, report, args))
+    for case in _cases(args, scratch):
+        summary["cases"].append(_run_case(setup, case, report, args))
     if args.matrix and not args.dir:
         summary["cases"] += _long_cases(setup, scratch, report, args)
     summary["ok"] = all(case["ok"] for case in summary["cases"])

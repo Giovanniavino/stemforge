@@ -157,11 +157,20 @@ def check_start_menu(exe: Path) -> str:
     return f"menu Start: {link} -> {target}"
 
 
-def check_no_desktop_icon() -> str:
+def check_desktop_icon(exe: Path, chosen: bool) -> str:
+    """L'icona sul desktop c'è solo se scelta (/TASKS=desktopicon), e sul
+    Desktop vero: con OneDrive è %OneDrive%\\Desktop, non %USERPROFILE%\\Desktop."""
     link = known_folder(FOLDERID_DESKTOP) / _SHORTCUT
-    if link.exists():
-        raise AssertionError(f"icona sul desktop creata senza averla chiesta: {link}")
-    return f"nessuna icona sul desktop (opzione non scelta): {link.parent}"
+    if not chosen:
+        if link.exists():
+            raise AssertionError(f"icona sul desktop creata senza averla chiesta: {link}")
+        return f"nessuna icona sul desktop (opzione non scelta): {link.parent}"
+    if not link.is_file():
+        raise AssertionError(f"icona sul desktop scelta ma assente: {link}")
+    target = _shortcut_target(link)
+    if os.path.normcase(target) != os.path.normcase(exe):
+        raise AssertionError(f"l'icona sul desktop punta a {target} invece di {exe}")
+    return f"icona sul desktop (scelta): {link} -> {target}"
 
 
 def check_open_with(exe: Path) -> str:
@@ -185,9 +194,11 @@ def check_integration_removed() -> str:
                   if _value(winreg.HKEY_CURRENT_USER, rf"{CLASSES}\{ext}\OpenWithProgids", PROG_ID) is not None]
     if (known_folder(FOLDERID_PROGRAMS) / _SHORTCUT).exists():
         leftovers.append("collegamento nel menu Start")
+    if (known_folder(FOLDERID_DESKTOP) / _SHORTCUT).exists():
+        leftovers.append("icona sul desktop")
     if leftovers:
         raise AssertionError(f"rimasto dopo la disinstallazione: {leftovers}")
-    return "registro e menu Start ripuliti"
+    return "registro, menu Start e desktop ripuliti"
 
 
 def data_dir() -> Path:
