@@ -97,9 +97,9 @@ jobs:
 
   compat:
     # Il motore con torch 2.2.2 E 2.10 (D7, §10.6), su Linux perche' e' il
-    # runner piu' rapido. La pila legacy non viene dal lock macOS (non si
-    # installa fuori dal Mac): sono le versioni dell'ambiente LEGACY del
-    # dev-box, fissate in .github/compat/legacy-requirements.txt.
+    # runner piu' rapido. Il lock macOS x86_64 non si installa fuori dal
+    # Mac: .github/compat/legacy-requirements.txt ne copia le versioni
+    # (tests/unit/test_ci_compat_stack.py), con torch/torchaudio "+cpu".
     name: Compat ${{ matrix.stack }}
     strategy:
       fail-fast: false
