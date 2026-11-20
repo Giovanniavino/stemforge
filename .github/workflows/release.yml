@@ -164,6 +164,15 @@ jobs:
       - name: Portachiavi temporaneo rimosso
         if: always() && env.HAS_APPLE_SIGNING == 'true'
         run: security delete-keychain "$RUNNER_TEMP/stemforge.keychain-db" || true
+      # §9.5: accanto al DMG Intel, lo zip che costruisce l'app sul Mac mini
+      # (le note di release lo nominano). Prende il FFmpeg LGPL appena
+      # costruito da packaging/ffmpeg/out/legacy-intel/.
+      - name: Installer zip del Mac mini
+        if: matrix.profile == 'legacy-intel'
+        run: |
+          # scrive dist/StemForge-Installer.zip (il nome delle note di release)
+          "$STEMFORGE_PY" packaging/make_installer.py
+          test -s dist/StemForge-Installer.zip
 
       - name: --selftest e batteria frozen sul DMG montato
         run: |
@@ -176,7 +185,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: package-${{ matrix.profile }}
-          path: dist/${{ env.DMG }}
+          # il DMG e, per legacy-intel, lo zip: in dist/ non c'e' altro
+          path: dist/
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
