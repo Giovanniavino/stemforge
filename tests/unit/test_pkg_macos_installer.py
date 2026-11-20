@@ -152,3 +152,17 @@ def test_main_reports_missing_ffmpeg(tmp_path, capsys, monkeypatch):
     assert mi.main(["--out", str(tmp_path / "z.zip")]) == 0
     captured = capsys.readouterr()
     assert "creato:" in captured.out and "m4a" in captured.err
+
+
+def test_mac_scripts_are_checked_out_with_lf_everywhere():
+    # un checkout Windows (core.autocrlf) copiato a mano sul Mac non deve
+    # portarsi dietro i \r\n: lo zip li converte, il repo no
+    rules = {
+        "packaging/installer": ("*.command", "*.sh"),
+        "packaging/macos": ("*.sh",),
+    }
+    for folder, patterns in rules.items():
+        attributes = (ROOT / folder / ".gitattributes").read_text(encoding="utf-8").splitlines()
+        for pattern in patterns:
+            assert f"{pattern} text eol=lf" in attributes, (folder, pattern)
+            assert list((ROOT / folder).glob(pattern)), (folder, pattern)
