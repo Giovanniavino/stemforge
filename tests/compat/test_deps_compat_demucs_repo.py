@@ -23,7 +23,7 @@ from stemforge.engine import compat, paths  # noqa: E402
 pytestmark = pytest.mark.compat
 
 SIG = "0123abcd"
-TINY_KWARGS = {"sources": ["drums", "bass"], "channels": 4, "depth": 2, "t_layers": 1,
+TINY_KWARGS = {"sources": ["drums", "bass"], "channels": 8, "depth": 2, "t_layers": 1,
                "segment": Fraction(39, 5)}
 URL_ROOT = "https://dl.fbaipublicfiles.invalid/demucs/hybrid_transformer/"
 
@@ -64,8 +64,7 @@ def test_cached_checkpoint_builds_the_model_without_network(tmp_path, monkeypatc
 
     expected = torch.load(path, map_location="cpu", weights_only=False)["state"]
     assert isinstance(model, HTDemucs) and model.sources == ["drums", "bass"]
-    # equal_nan: con 4 canali alcuni pesi iniziali sono NaN (std di 1 valore)
-    torch.testing.assert_close(model.state_dict(), expected, rtol=0, atol=0, equal_nan=True)
+    torch.testing.assert_close(model.state_dict(), expected, rtol=0, atol=0)
 
 
 def test_missing_checkpoint_is_downloaded_with_the_hash_prefix(tmp_path, monkeypatch):
@@ -85,15 +84,47 @@ def test_missing_checkpoint_is_downloaded_with_the_hash_prefix(tmp_path, monkeyp
     assert (checkpoints / source.name).is_file()
 
 
-def test_corrupted_cached_checkpoint_is_refused(tmp_path):
-    path = _named_checkpoint(tmp_path)
+def _corrupt(path: Path) -> None:
     data = bytearray(path.read_bytes())
     data[len(data) // 2] ^= 0xFF
     path.write_bytes(bytes(data))
+
+
+def test_corrupted_cached_checkpoint_is_downloaded_again(tmp_path, monkeypatch):
+    # §9.2: un peso danneggiato si riconosce e si riscarica, non si carica
+    source = _named_checkpoint(tmp_path / "server")
+    checkpoints = tmp_path / "hub" / "checkpoints"
+    checkpoints.mkdir(parents=True)
+    cached = checkpoints / source.name
+    cached.write_bytes(source.read_bytes())
+    _corrupt(cached)
+    calls: list[str] = []
+
+    def fake_download(url: str, dst: str, hash_prefix: str | None = None, **_: object) -> None:
+        calls.append(url)
+        Path(dst).write_bytes(source.read_bytes())
+
+    monkeypatch.setattr(torch.hub, "download_url_to_file", fake_download)
+    repo = compat.VerifiedRemoteRepo({SIG: URL_ROOT + source.name}, checkpoints)
+
+    assert isinstance(repo.get_model(SIG), HTDemucs)
+    assert calls == [URL_ROOT + source.name]
+    assert cached.read_bytes() == source.read_bytes()
+
+
+def test_corrupted_checkpoint_is_never_loaded_when_offline(tmp_path, monkeypatch):
+    path = _named_checkpoint(tmp_path)
+    _corrupt(path)
+
+    def offline(*_: object, **__: object) -> None:
+        raise OSError("rete assente")
+
+    monkeypatch.setattr(torch.hub, "download_url_to_file", offline)
     repo = compat.VerifiedRemoteRepo({SIG: URL_ROOT + path.name}, tmp_path)
 
-    with pytest.raises(compat.CheckpointError, match="alterato"):
+    with pytest.raises(OSError, match="rete assente"):
         repo.get_model(SIG)
+    assert not path.exists()
 
 
 def test_unknown_signature_is_a_demucs_loading_error(tmp_path):

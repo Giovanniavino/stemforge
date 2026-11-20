@@ -177,10 +177,15 @@ class VerifiedRemoteRepo:
             raise ModelLoadingError(f"nessun modello demucs con firma {sig}")
         url = self._urls[sig]
         path = self._checkpoints / url.rsplit("/", 1)[-1]
-        if not path.is_file():
-            self._checkpoints.mkdir(parents=True, exist_ok=True)
-            # scrive su un temporaneo e rinomina solo se l'hash torna
-            torch.hub.download_url_to_file(url, str(path), hash_prefix=expected_hash_prefix(path))
+        if path.is_file():
+            try:
+                return load_model(load_checkpoint(path))
+            except CheckpointError:
+                # danneggiato sul disco: si riscarica, non si carica (§9.2)
+                path.unlink()
+        self._checkpoints.mkdir(parents=True, exist_ok=True)
+        # scrive su un temporaneo e rinomina solo se l'hash torna
+        torch.hub.download_url_to_file(url, str(path), hash_prefix=expected_hash_prefix(path))
         return load_model(load_checkpoint(path))
 
 
