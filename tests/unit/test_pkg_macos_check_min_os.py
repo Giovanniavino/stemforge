@@ -217,6 +217,44 @@ def test_arm64_slice_of_universal2_counts_only_without_arch_filter(tmp_path):
     assert check.check_bundle(app, (11,), "arm64", otool)[1] == []
 
 
+def test_minimum_equal_to_promise_passes(tmp_path):
+    # il confine: chiedere esattamente il promesso e' lecito, anche scritto
+    # in un altro modo (11.0.0 contro 11.0)
+    arm = THIN_CCTOOLS_TOO_NEW.replace("10.15.4", "11.0.0")
+    app = make_bundle(tmp_path, {"Contents/MacOS/StemForge": thin(ARM64)})
+    otool = fake_otool({"StemForge": arm})
+    assert check.check_bundle(app, check.parse_version("11.0"), "arm64", otool) == (1, [])
+    _, problems = check.check_bundle(app, check.parse_version("10.15"), "arm64", otool)
+    assert problems == ["Contents/MacOS/StemForge [arm64] richiede macOS 11.0"]
+
+
+def test_fat_slice_without_minimum_is_reported_only_for_that_slice(tmp_path):
+    no_arm_minimum = FAT_UNIVERSAL2.split("(architecture arm64)")[0] + (
+        "(architecture arm64):\nLoad command 0\n      cmd LC_SEGMENT_64\n  cmdsize 72\n")
+    app = make_bundle(tmp_path, {"Contents/Frameworks/QtCore": fat()})
+    otool = fake_otool({"QtCore": no_arm_minimum})
+    assert check.check_bundle(app, (10, 15), "x86_64", otool)[1] == []
+    assert check.check_bundle(app, (11,), "arm64", otool)[1] == [
+        "Contents/Frameworks/QtCore [arm64] non dichiara il macOS minimo"]
+
+
+def test_real_otool_is_called_on_every_slice_and_failures_become_errors(tmp_path, monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run(command, capture_output, text):
+        calls.append(command)
+        failing = command[-1].endswith("rotto")
+        return check.subprocess.CompletedProcess(
+            command, 1 if failing else 0, "" if failing else THIN_OLD_STYLE,
+            "truncated or malformed object" if failing else "")
+
+    monkeypatch.setattr(check.subprocess, "run", fake_run)
+    assert check.run_otool(tmp_path / "libsndfile.dylib") == THIN_OLD_STYLE
+    assert calls[0] == ["otool", "-arch", "all", "-l", str(tmp_path / "libsndfile.dylib")]
+    with pytest.raises(check.OtoolError, match="truncated or malformed"):
+        check.run_otool(tmp_path / "rotto")
+
+
 def test_thin_binary_of_the_wrong_architecture_is_reported(tmp_path):
     arm_output = THIN_CCTOOLS_TOO_NEW.replace("10.15.4", "11.0")
     app = make_bundle(tmp_path, {"Contents/MacOS/ffmpeg/ffmpeg": thin(ARM64)})

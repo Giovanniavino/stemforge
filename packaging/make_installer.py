@@ -41,7 +41,9 @@ REQUIRED_ITEMS = (
     f"{INSTALLER_DIR}/comune.sh",
     f"{INSTALLER_DIR}/requirements-build-macos-x86_64.lock",
 )
-OPTIONAL_ITEMS = ("THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.txt")
+# THIRD_PARTY_NOTICES senza estensione e' il nome che il repo usa; le
+# varianti con estensione restano accettate. Lo spec li mette anche nell'app.
+OPTIONAL_ITEMS = ("THIRD_PARTY_NOTICES", "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.txt")
 # in cima allo zip: ciò che l'utente vede appena estratto
 TOP_LEVEL = (
     ("Installa StemForge.command", True),
@@ -51,7 +53,7 @@ TOP_LEVEL = (
 # insieme all'eseguibile, gli eventuali testi di licenza dell'area FFmpeg
 FFMPEG_NOTICES = ("LICENSE*", "COPYING*", "*.txt", "*.md")
 TEXT_SUFFIXES = {".command", ".sh", ".py", ".toml", ".lock", ".md", ".spec", ".plist", ".txt"}
-TEXT_NAMES = {"LICENSE"}
+TEXT_NAMES = {"LICENSE", "THIRD_PARTY_NOTICES"}
 _UNIX = 3  # "made by" Unix: senza, Archive Utility e unzip ignorano i permessi
 _EXECUTABLE = stat.S_IFREG | 0o755
 _REGULAR = stat.S_IFREG | 0o644

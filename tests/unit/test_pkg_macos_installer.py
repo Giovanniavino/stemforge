@@ -110,6 +110,16 @@ def test_translations_are_shipped_when_present(tmp_path):
         assert zf.read("StemForge/resources/i18n/stemforge_en.qm") == b"<\xb8d\x18\r\n"
 
 
+def test_third_party_notices_without_extension_are_shipped_as_text(tmp_path):
+    # il repo lo chiama THIRD_PARTY_NOTICES, senza estensione: lo spec, sul
+    # Mac, lo cerca nella radice dei sorgenti per metterlo nell'app
+    root = _fake_root(tmp_path)
+    (root / "THIRD_PARTY_NOTICES").write_bytes(b"FFmpeg: LGPL 2.1\r\n")
+    mi.build_zip(root, tmp_path / "out.zip")
+    with zipfile.ZipFile(tmp_path / "out.zip") as zf:
+        assert zf.read("StemForge/THIRD_PARTY_NOTICES") == b"FFmpeg: LGPL 2.1\n"
+
+
 def test_missing_build_lock_is_a_clear_error(tmp_path):
     root = _fake_root(tmp_path)
     (root / mi.INSTALLER_DIR / "requirements-build-macos-x86_64.lock").unlink()
@@ -160,6 +170,7 @@ def test_mac_scripts_are_checked_out_with_lf_everywhere():
     rules = {
         "packaging/installer": ("*.command", "*.sh"),
         "packaging/macos": ("*.sh",),
+        "packaging": ("notarize.sh",),
     }
     for folder, patterns in rules.items():
         attributes = (ROOT / folder / ".gitattributes").read_text(encoding="utf-8").splitlines()
