@@ -8,8 +8,8 @@ passata.
   la RAM disponibile IN QUEL MOMENTO consente: il modello è già
   caricato e gli array del brano già allocati, quindi la lettura è
   quella che conta.
-- Un acceleratore (MPS, CUDA) che fallisce durante un job: la passata
-  si rifà sulla CPU con un avviso (D8). Un errore di calcolo spegne
+- Un acceleratore (MPS, CUDA) che fallisce durante un job: la passata,
+  di 1° o di 2° stadio, si rifà sulla CPU con un avviso (D8). Un errore di calcolo spegne
   l'acceleratore per i job successivi; una memoria esaurita no, è
   contingente.
 """
@@ -96,6 +96,26 @@ def _first_stage_wanted(p: Pass, backend: Backend) -> frozenset[StemKind]:
     return frozenset(p.needed)
 
 
+def _with_cpu_fallback(state: JobState, run_on: Callable[[str], None]) -> None:
+    """Esegue una passata sul device del job; se un acceleratore fallisce
+    la rifà sulla CPU con un avviso (D8), per OGNI passata e OGNI
+    acceleratore. Un errore di calcolo boccia l'acceleratore per i job
+    successivi, una memoria esaurita no: è contingente."""
+    try:
+        run_on(state.device)
+    except (CancelledError, BackendUnavailable):
+        raise
+    except Exception as exc:
+        if state.device not in device.ACCELERATORS:
+            raise
+        log.warning("%s fallito, ripiego su CPU", state.device, exc_info=True)
+        if not is_memory_error(exc):
+            device.save_verdict(state.device, False, f"errore durante un job: {exc!r}")
+        state.warnings.append(t("warn.accel_fallback", device=state.device.upper()))
+        state.device = "cpu"
+        run_on("cpu")
+
+
 def run_first_stage(
     quality: str,
     p: Pass,
@@ -114,32 +134,38 @@ def run_first_stage(
             backend, work, wanted, on_progress, should_cancel, state.available_memory
         )
 
-    try:
-        run_on(state.device)
-    except (CancelledError, BackendUnavailable):
-        raise
-    except Exception as exc:
-        if state.device not in device.ACCELERATORS:
-            raise
-        log.warning("%s fallito, ripiego su CPU", state.device, exc_info=True)
-        if not is_memory_error(exc):
-            device.save_verdict(state.device, False, f"errore durante un job: {exc!r}")
-        state.warnings.append(t("warn.accel_fallback", device=state.device.upper()))
-        state.device = "cpu"
-        run_on("cpu")
+    _with_cpu_fallback(state, run_on)
     state.stems.update(state.stage1)
 
 
-def _second_stage_backend(p: Pass, backends: BackendCache, quality: str,
-                          state: JobState) -> Backend | None:
+def _second_stage_result(
+    p: Pass,
+    source: np.ndarray,
+    backends: BackendCache,
+    quality: str,
+    state: JobState,
+    on_progress: Callable[[float], None],
+    should_cancel: Callable[[], bool],
+) -> dict[StemKind, np.ndarray] | None:
+    """Uscita della passata, con lo stesso ripiego su CPU del 1° stadio
+    (D8); None se il modello non c'è (§5.2.4: lo stem base sopravvive)."""
+    result: dict[StemKind, np.ndarray] = {}
+
+    def run_on(device_name: str) -> None:
+        backend = get_backend(backends, p.backend, p.model, device_name, quality)
+        result.update(run_pass_blocks(
+            backend, source, frozenset(p.needed), on_progress, should_cancel,
+            state.available_memory,
+        ))
+
     try:
-        return get_backend(backends, p.backend, p.model, state.device, quality)
+        _with_cpu_fallback(state, run_on)
     except BackendUnavailable:
-        # §5.2.4: lo stem base sopravvive, avviso non bloccante.
         log.info("2° stadio %s non disponibile", p.backend, exc_info=True)
         state.warnings.append(t(f"warn.unavailable.{p.backend}"))
         state.unavailable.append(p)
         return None
+    return result
 
 
 def run_second_stage(
@@ -156,12 +182,9 @@ def run_second_stage(
         state.warnings.append(t("warn.missing_input", label=t(f"phase.{p.backend}")))
         state.unavailable.append(p)
         return
-    backend = _second_stage_backend(p, backends, quality, state)
-    if backend is None:
+    result = _second_stage_result(p, source, backends, quality, state, on_progress, should_cancel)
+    if result is None:
         return
-    result = run_pass_blocks(
-        backend, source, frozenset(p.needed), on_progress, should_cancel, state.available_memory
-    )
     if p.backend == "dereverb":
         state.wet_vocals["wet"] = source
         state.stems[StemKind.VOCALS] = result[StemKind.VOCALS]

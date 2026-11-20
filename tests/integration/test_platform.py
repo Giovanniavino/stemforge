@@ -118,6 +118,48 @@ def test_cancel_on_gpu_is_not_retried_on_cpu(accelerator, mix_44k, tmp_path, mon
     assert device.load_verdict(accelerator) is None, "annullare non boccia la GPU"
 
 
+class Dereverb:
+    """2° stadio finto (de-riverbero): toglie il 30% della voce."""
+
+    name = "dereverb"
+    samplerate = 44100
+    provides = frozenset({K.VOCALS})
+
+    def __init__(self, error: Exception | None = None):
+        self.error = error
+        self.calls = 0
+
+    def separate(self, audio, wanted, on_progress, should_cancel):
+        self.calls += 1
+        if self.error is not None:
+            raise self.error
+        on_progress(1.0)
+        return {K.VOCALS: audio * 0.7}
+
+
+@pytest.mark.parametrize("accelerator", ACCELERATORS)
+def test_second_stage_failure_on_gpu_is_redone_on_cpu(accelerator, mix_44k, tmp_path, monkeypatch):
+    # D8 vale per OGNI passata: un 2° stadio rotto sulla GPU non perde il risultato
+    from stemforge.engine import device
+    from stemforge.worker.pipeline import run_job
+
+    _force_device(monkeypatch, accelerator)
+    cpu_dereverb = Dereverb()
+    cache = {
+        ("demucs4", "htdemucs_ft", accelerator, "balanced"): FakeDemucs(),
+        ("dereverb", "dereverb", accelerator, "balanced"): Dereverb(RuntimeError("op rotta")),
+        ("dereverb", "dereverb", "cpu", "balanced"): cpu_dereverb,
+    }
+    job = SeparationJob(source=mix_44k, wanted=(K.VOCALS, K.OTHER), quality="balanced",
+                        out_dir=tmp_path / "out", device="auto", dereverb_vocals=True)
+    result = run_job(job, lambda m: None, backends=cache)
+
+    assert cpu_dereverb.calls == 1, "il de-riverbero è stato rifatto sulla CPU"
+    assert any("CPU" in w and accelerator.upper() in w for w in result.warnings)
+    assert (result.out_dir / "vocals_wet.wav").exists(), "il de-riverbero è stato applicato"
+    assert device.load_verdict(accelerator) is False
+
+
 def _app_ffmpeg():
     """Il FFmpeg LGPL dell'app (D9), o skip pulito se qui non è compilato.
 
