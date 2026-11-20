@@ -21,6 +21,18 @@ libstdc++, OpenGL/EGL (driver della GPU), libX11/libxcb, fontconfig e
 freetype, le librerie client di Wayland, D-Bus, GLib, PulseAudio/ALSA.
 Ogni desktop Linux le ha già.
 
+Le librerie di sistema dei plugin di piattaforma di PySide6 6.7.3 (lette
+con `readelf -d` dalla wheel installata nella build del 20-11-2026; la
+wheel contiene sia `xcb` sia `wayland`: `libqwayland-generic.so`,
+`libqwayland-egl.so` e le integrazioni `xdg-shell`, decorazioni, EGL):
+
+| Piattaforma Qt | Librerie chieste (oltre a glibc, libstdc++ e Qt) | Dove stanno |
+|---|---|---|
+| `xcb` (X11, XWayland) | `libxcb-cursor0`, `libxcb-icccm4`, `libxcb-image0`, `libxcb-keysyms1`, `libxcb-render-util0`, `libxcb-randr0`, `libxcb-render0`, `libxcb-shape0`, `libxcb-shm0`, `libxcb-sync1`, `libxcb-xfixes0`, `libxcb-xkb1`, `libxkbcommon0`, `libxkbcommon-x11-0` | **nel pacchetto**: MIT/X11, ABI stabile, e non sempre installate (senza `libxcb-cursor0` Qt ≥ 6.5 non apre finestre) |
+| `xcb` | `libxcb1`, `libx11-6`, `libx11-xcb1`, `libgl1` (e `libxcb-glx0` per l'integrazione GLX) | **dell'host**: parlano col server X e col driver della GPU |
+| `wayland` | `libwayland-client0`, `libwayland-cursor0`, `libwayland-egl1`, `libegl1`, `libgl1`, `libxkbcommon0` | client Wayland ed EGL **dell'host** (ABI del compositore e del driver); `libxkbcommon0` nel pacchetto. Senza le librerie Wayland Qt ripiega su `xcb` via XWayland |
+| entrambe | `libfontconfig1`, `libfreetype6`, `libglib2.0-0`, `libdbus-1-3` | **dell'host**: configurazione dei font e servizi della sessione |
+
 Per montare l'AppImage serve `fusermount` o `fusermount3` (pacchetto
 `fuse` o `fuse3`: presente di default su Ubuntu 20.04 e 24.04, Fedora,
 Debian con desktop). **Non** serve `libfuse2`: il runtime è il type2
