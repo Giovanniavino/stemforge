@@ -174,7 +174,22 @@ def _launches_opener(call: ast.Call) -> bool:
         first = first.elts[0]
     if not (isinstance(first, ast.Constant) and isinstance(first.value, str)):
         return False
-    return first.value.split(" ")[0].lower() in _OPENERS
+    # "/usr/bin/open" e "C:\\Windows\\explorer.exe" sono gli stessi apri-file
+    program = first.value.split(" ")[0].replace("\\", "/").rsplit("/", 1)[-1]
+    return program.lower() in _OPENERS
+
+
+def _dynamic_import(call: ast.Call) -> str | None:
+    """`importlib.import_module("winreg")` o `__import__("ctypes")`."""
+    func = call.func
+    name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+    if name not in ("import_module", "__import__") or not call.args:
+        return None
+    first = call.args[0]
+    if isinstance(first, ast.Constant) and isinstance(first.value, str) \
+            and first.value.split(".")[0] in _PLATFORM_MODULES:
+        return first.value
+    return None
 
 
 def _decision_nodes(tree: ast.AST) -> set[int]:
@@ -231,6 +246,8 @@ def platform_api_uses(source: str, report_only: frozenset[str] | None = None) ->
             found.append(f"{node.lineno}: {attr[0]}.{attr[1]}")
         elif isinstance(node, ast.Call) and _launches_opener(node):
             found.append(f"{node.lineno}: lancia un apri-file di sistema")
+        elif isinstance(node, ast.Call) and (module := _dynamic_import(node)):
+            found.append(f"{node.lineno}: importa {module} a runtime")
         else:
             found += _import_uses(node, report_only is not None)
     if report_only is not None:
@@ -277,6 +294,10 @@ def test_platform_guard_catches_what_it_promises():
         "from subprocess import run\nrun(['explorer', '/select,x'])",
         "import os\nos.system('explorer /select,x')",
         "import os\nos.startfile('x')",
+        "import subprocess\nsubprocess.run(['/usr/bin/open', '-R', 'x'])",
+        "import subprocess\nsubprocess.Popen([r'C:\\Windows\\explorer.exe', 'x'])",
+        "import importlib\nreg = importlib.import_module('winreg')",
+        "k = __import__('ctypes.wintypes')",
     ]
     for snippet in caught:
         assert platform_api_uses(snippet), f"non vista: {snippet!r}"
@@ -286,6 +307,8 @@ def test_platform_guard_catches_what_it_promises():
         "import subprocess\nsubprocess.run(['ffmpeg', '-i', 'x'])",
         "with open('x') as f: pass",
         "import numpy as np\nnp.name = 1",
+        "import importlib\nimportlib.import_module('stemforge.engine.demucs4')",
+        "import subprocess\nsubprocess.run(['/opt/x/bin/ffmpeg', '-version'])",
     ]
     for snippet in allowed:
         assert not platform_api_uses(snippet), f"falso allarme: {snippet!r}"
