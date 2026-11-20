@@ -254,15 +254,18 @@ def decode(path: Path) -> tuple[np.ndarray, int]:
 
     Sample rate e canali sono quelli del file (il downmix e il resampling
     sono compito di audio_io). Nessun file temporaneo: i campioni arrivano
-    da una pipe in f32le grezzo, con canali e sample rate fissati a quelli
-    letti prima, così la forma dell'array non dipende da cosa c'è nel flusso.
+    da una pipe in f32le grezzo, che non dice la propria forma; la si legge
+    prima con _stream_format. Dopo il primo frame ffmpeg tiene fisso il
+    formato d'uscita anche se il flusso cambia, quindi la forma resta quella.
     """
     _require()  # un'app senza decoder è un guasto dell'app, non del file
     if not Path(path).is_file():
         raise DecodeError(f"{Path(path).name} non esiste o non è un file.")
     channels, samplerate = _stream_format(path)
-    args = ["-i", _file_arg(path), "-map", "0:a:0", "-vn", "-sn", "-dn",
-            "-ac", str(channels), "-ar", str(samplerate),
+    # niente "-ac": forza il layout di default per quel numero di canali e
+    # swresample rimescola gli altri (esagonale, 6.0, 7.1 wide: canali
+    # sommati tra loro, misurato il 20-11-2026). Il downmix è di audio_io.
+    args = ["-i", _file_arg(path), "-map", "0:a:0", "-ar", str(samplerate),
             "-c:a", "pcm_f32le", "-f", "f32le", "pipe:1"]
     try:
         code, out, err = _run(args, DECODE_TIMEOUT_S, quiet=True)
