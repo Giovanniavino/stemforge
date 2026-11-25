@@ -142,9 +142,10 @@ _LAUNCHERS = {"run", "Popen", "call", "check_call", "check_output", "system", "p
 # §10.5): puo' LEGGERE platform.* per stamparlo, mai decidere in base ad
 # esso. Un `if platform.system() == ...` li' resta una violazione, come
 # ogni altra API di piattaforma.
-REPORT_ONLY = {"worker/selftest.py": frozenset({
+_DESCRIBE_SYSTEM = frozenset({
     "python_version", "system", "release", "machine", "platform", "mac_ver", "version",
-})}
+})
+REPORT_ONLY = {"worker/selftest.py": _DESCRIBE_SYSTEM}
 
 
 def _module_aliases(tree: ast.AST) -> dict[str, str]:
@@ -165,6 +166,8 @@ def _dotted(node: ast.AST, aliases: dict[str, str]) -> tuple[str, str] | None:
 
 
 def _launches_opener(call: ast.Call) -> bool:
+    # shortcut: vede solo il programma scritto come costante, non uno in una
+    # variabile; se un apri-file passa da li', seguire le assegnazioni
     func = call.func
     name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
     if name not in _LAUNCHERS or not call.args:
