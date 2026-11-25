@@ -131,6 +131,11 @@ def test_ci_covers_all_profiles_and_both_torch_stacks():
     assert stacks == {"legacy", "modern"}
     commands = " ".join(s.get("run", "") for s in jobs["compat"]["steps"])
     assert "-m compat" in commands
+    # senza PyAV (D9) il giro veloce prova m4a/alac solo col FFmpeg LGPL
+    steps = jobs["test"]["steps"]
+    assert jobs["test"]["needs"] == "ffmpeg-win"
+    assert any(s.get("uses") == "./.github/actions/ffmpeg-lgpl" for s in steps)
+    assert "STEMFORGE_FFMPEG=" in " ".join(s.get("run", "") for s in steps)
 
 
 def test_release_triggers():

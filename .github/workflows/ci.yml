@@ -1,7 +1,8 @@
 name: CI
 
-# A ogni modifica (§9.6): test veloci sui quattro profili, validita' dei
-# lock, e il motore con entrambe le pile di torch (pytest -m compat, D7).
+# A ogni modifica (§9.6): test veloci sui quattro profili (col FFmpeg LGPL
+# di D9, in cache), validita' dei lock, e il motore con entrambe le pile
+# di torch (pytest -m compat, D7).
 # La build completa, il collaudo dei pacchetti e i test con i modelli veri
 # stanno in release.yml.
 
@@ -62,8 +63,30 @@ jobs:
           if [ -n "$pin" ]; then python -m pip install "$pin"; fi
       - run: python packaging/gen_locks.py --check
 
+  ffmpeg-win:
+    # Come in release.yml: win-x64 si cross-compila su Ubuntu (contratto
+    # dell'area FFmpeg). Con la cache calda costa un minuto.
+    name: FFmpeg LGPL win-x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: win-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-win-x64
+          path: packaging/ffmpeg/out/win-x64/
+          if-no-files-found: error
+          retention-days: 1
+
   test:
+    # Senza PyAV (D9) m4a/alac passano solo dal FFmpeg LGPL: senza il
+    # binario i test FFmpeg si saltano, e un test che si salta sempre non
+    # protegge niente. Per questo anche il giro veloce lo costruisce.
     name: Test ${{ matrix.profile }}
+    needs: ffmpeg-win
     strategy:
       fail-fast: false
       matrix:
@@ -74,11 +97,36 @@ jobs:
           - { profile: legacy-intel, os: macos-15-intel, python: "3.11", lock: requirements-macos-x86_64.lock }
           - { profile: linux-x64, os: ubuntu-24.04, python: "3.12", lock: requirements-linux-x64.lock }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       QT_QPA_PLATFORM: offscreen
+      # fuori dal container build.sh rientra in manylinux con docker: la
+      # stessa immagine, fissata per digest, della release
+      MANYLINUX_IMAGE: quay.io/pypa/manylinux_2_28_x86_64:2026.11.14-1@sha256:d086f64cddcace250ef0f0073583c51b8298159303290a730c9f59bd91edfd2c
     steps:
       - uses: actions/checkout@v7
+      - name: FFmpeg win-x64 (dal job ffmpeg-win)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-win-x64
+          path: packaging/ffmpeg/out/win-x64
+      - name: FFmpeg del profilo
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: ${{ matrix.profile }}
+      - name: FFmpeg per i test (licenza ricontrollata a runtime)
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          out="$PWD/packaging/ffmpeg/out/$PROFILE"
+          if [ "$RUNNER_OS" = Windows ]; then
+            bash packaging/ffmpeg/check_license.sh "$out/ffmpeg.exe"
+            out="$(cygpath -w "$out")"
+          fi
+          echo "STEMFORGE_FFMPEG=$out" >> "$GITHUB_ENV"
       - name: Librerie di sistema per Qt (Ubuntu)
         if: runner.os == 'Linux'
         run: |
