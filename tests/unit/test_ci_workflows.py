@@ -26,8 +26,10 @@ WORKFLOWS = GH / "workflows"
 ACTIONS = GH / "actions"
 
 # Ultima versione maggiore di ogni action ufficiale, tutte su Node 24
-# (verificato sulle release il 20-11-2026). Alzarle e' una scelta: va
-# fatta qui E nei workflow, insieme.
+# (verificate su GitHub il 25-11-2026: checkout 7.0.1, setup-python 7.1.0,
+# cache 6.1.0, upload-artifact 7.0.2, download-artifact 8.0.2, runs.using
+# node24 in ognuna). Alzarle e' una scelta: va fatta qui E nei workflow,
+# insieme.
 CURRENT_MAJORS = {
     "actions/checkout": "v7",
     "actions/setup-python": "v7",
@@ -35,9 +37,9 @@ CURRENT_MAJORS = {
     "actions/upload-artifact": "v7",
     "actions/download-artifact": "v8",
 }
-# Etichette documentate in actions/runner-images. Mai "-latest" (cambia
-# sistema da sola: ubuntu-latest passa a 26.04 dal 19-10-2026) e mai
-# macos-14 (ritirato: run 42651651029 del 09-11-2026).
+# Etichette documentate nel README di actions/runner-images (25-11-2026).
+# Mai "-latest" (cambia sistema da sola: ubuntu-latest e' gia' 26.04) e
+# mai macos-14 (ritirato: run 42651651029 del 09-11-2026).
 RUNNERS = {
     "ubuntu-24.04", "windows-2022", "windows-2025",
     "macos-15", "macos-15-intel", "macos-26", "macos-26-intel",
