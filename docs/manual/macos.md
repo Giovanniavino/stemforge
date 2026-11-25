@@ -13,7 +13,8 @@ macchine:
 Ogni riga si spunta solo se l'esito è **esattamente** quello atteso. Se
 qualcosa va diversamente, annota la riga, il messaggio esatto e
 `~/Library/Logs/StemForge/stemforge.log`, poi apri una issue con lo zip di
-"Esporta diagnostica" (§9.9).
+"Esporta diagnostica" (§9.9; se la versione non ha ancora il pulsante,
+allega il log).
 
 **Tempi.** Le verifiche richiedono circa 10 minuti per macchina. Non
 sono comprese le attese lunghe, che vanno avviate per prime: il download
