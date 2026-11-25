@@ -127,11 +127,14 @@ test-frozen:
 	STEMFORGE_FROZEN_EXE="$(FROZEN_EXE)" $(PYTEST) -m frozen
 
 # lo stesso actionlint 1.7.12 del job "workflows" di ci.yml, dal PATH o da
-# ACTIONLINT=...; con shellcheck nel PATH controlla anche gli script run:
+# ACTIONLINT=...; con shellcheck (PATH o SHELLCHECK=...) controlla anche gli
+# script run:, senza lo salta in silenzio. Il flag dopo il binario serve anche
+# al make nativo di Windows, che rompe una riga che finisce con le virgolette.
 ACTIONLINT ?= actionlint
+SHELLCHECK ?= shellcheck
 check-workflows:
-	"$(ACTIONLINT)"
-	$(PYTEST) tests/unit/test_ci_workflows.py
+	"$(ACTIONLINT)" -shellcheck="$(SHELLCHECK)" -color=false
+	"$(VPY)" -m pytest -q tests/unit/test_ci_workflows.py tests/unit/test_ci_compat_stack.py
 
 # -- lock e build ------------------------------------------------------------
 
