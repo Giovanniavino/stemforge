@@ -22,6 +22,7 @@ pytestmark = pytest.mark.compat
 
 FT_CHECKPOINTS = ("f7e0c4bc-ba3fe64a.th", "d12395a8-e57c48e6.th",
                   "92cfc3b6-ef3bcb9c.th", "04573f0d-f3cf25b2.th")
+SIX_STEMS_CHECKPOINT = "5c90dfd2-34c22ccb.th"
 
 _calls: list[str] = []
 
@@ -135,6 +136,18 @@ def test_real_htdemucs_ft_weights_build_the_model(name, system_checkpoints):
 
     assert isinstance(model, HTDemucs)
     assert model.sources == ["drums", "bass", "other", "vocals"]
+
+
+@pytest.mark.slow  # l'altro modello del motore (planner.MODEL_6S): l'allowlist deve bastare anche a lui
+def test_real_htdemucs_6s_weights_build_the_model(system_checkpoints):
+    path = system_checkpoints / SIX_STEMS_CHECKPOINT
+    if not path.is_file():
+        pytest.skip(f"pesi {SIX_STEMS_CHECKPOINT} non scaricati su questa macchina")
+    from demucs.states import load_model
+
+    model = load_model(compat.load_checkpoint(path))
+
+    assert model.sources == ["drums", "bass", "other", "vocals", "guitar", "piano"]
 
 
 @pytest.mark.slow

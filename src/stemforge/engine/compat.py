@@ -40,7 +40,8 @@ from typing import Any, ContextManager
 
 # Nomi come compaiono nel pickle dei checkpoint htdemucs (letti con
 # torch.serialization.get_unsafe_globals_in_checkpoint sui quattro pesi di
-# htdemucs_ft). "numpy.core" e' il nome che numpy 1 ha scritto nel file:
+# htdemucs_ft; htdemucs_6s usa solo i primi due). "numpy.core" e' il nome
+# che numpy 1 ha scritto nel file:
 # con numpy 2 il modulo si chiama numpy._core, va abbinato per nome.
 # Float64DType non compare nel file: e' il tipo che numpy.dtype("f8")
 # restituisce quando il pickle lo ricostruisce (metriche di training).
