@@ -77,7 +77,6 @@ a = Analysis(
         "stemforge.engine.dereverb",
         "soundfile",
         "av",
-        "numpy.core.multiarray",
         *collect_submodules("demucs"),
         *collect_submodules("julius"),
         *collect_submodules("openunmix"),
