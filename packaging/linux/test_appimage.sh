@@ -25,8 +25,10 @@ REPORT="$2"
 shift 2
 [ -f "$APPIMAGE_FILE" ] || die "AppImage non trovata: $APPIMAGE_FILE"
 
-# Le librerie di host_libs.txt, per nome di pacchetto Ubuntu. Su 24.04
-# libasound2 e libglib2.0-0 sono nomi virtuali (t64): apt li risolve da se'.
+# Le librerie di host_libs.txt, per nome di pacchetto Ubuntu 20.04. Su
+# 24.04 alcune hanno il suffisso t64 (transizione time_t a 64 bit) e il
+# vecchio nome e' solo virtuale: "no installation candidate" (collaudo del
+# 26-11-2026). install_host_libraries sceglie il nome che esiste.
 HOST_PACKAGES=(
     libgl1 libegl1 libopengl0 libdrm2 libgbm1
     libx11-6 libx11-xcb1 libxcb1
@@ -54,6 +56,12 @@ install_host_libraries() {
         mkdir -p /usr/local/share/fonts
     fi
     apt-get "${apt_options[@]}" update -qq
+    local i
+    for i in "${!HOST_PACKAGES[@]}"; do
+        if apt-cache show "${HOST_PACKAGES[$i]}t64" >/dev/null 2>&1; then
+            HOST_PACKAGES[i]+="t64"
+        fi
+    done
     apt-get "${apt_options[@]}" install -y -qq --no-install-recommends "${HOST_PACKAGES[@]}"
 }
 
