@@ -10,10 +10,11 @@ finisce mai". La memoria di una passata Demucs è una parte fissa (le
 attivazioni di un segmento da 7.8 s, che non dipendono dalla lunghezza)
 più una parte proporzionale ai secondi di audio del blocco (gli
 accumulatori di apply_model e le uscite di ogni sorgente). Entrambe
-sono MISURATE (picco della memoria privata del processo, insieme
-htdemucs_ft completo, CPU, torch 2.10 e 2.2.2): i numeri e il metodo
-stanno nel commit che li ha introdotti. Con la RAM sconosciuta si
-resta ai blocchi di sempre. `segment` non si tocca (§6.2).
+sono MISURATE (picco della memoria privata del processo oltre il
+modello già caricato, htdemucs_ft completo, preset best, CPU, 20 e 60 s
+di audio): torch 2.10 ~0.92 GB + 10.5 MB/s, torch 2.2.2 ~0.62 GB +
+10.75 MB/s. Le costanti sotto sono il caso peggiore più un margine.
+Con la RAM sconosciuta si resta ai blocchi di sempre. `segment` non si tocca (§6.2).
 
 Se la RAM non basta nemmeno per un brano sotto i 15 minuti, si divide
 anche quello: l'invariante regge per costruzione con qualunque numero
@@ -33,7 +34,7 @@ BLOCK_OVERLAP_S = 2.0
 # una macchina che non regge 30 s di audio non regge neanche il modello.
 MIN_BLOCK_S = 30.0
 
-# Misurati: vedi la docstring del modulo.
+# Misurati con margine: vedi la docstring del modulo.
 PASS_FIXED_BYTES = 1_200_000_000
 PASS_BYTES_PER_AUDIO_S = 12_000_000
 # Quota della RAM disponibile che una passata può prendersi: il resto
