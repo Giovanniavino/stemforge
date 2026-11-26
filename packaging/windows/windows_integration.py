@@ -243,6 +243,37 @@ def _write_tone(path: Path) -> None:
         handle.writeframes(bytes(frames))
 
 
+def process_windows(pid: int) -> list[tuple[str, str]]:
+    """(classe, titolo) delle finestre visibili di primo livello del processo."""
+    import ctypes.wintypes as wt
+
+    user32 = ctypes.WinDLL("user32")
+    enum_proc = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+    user32.EnumWindows.argtypes = [enum_proc, wt.LPARAM]
+    found: list[tuple[str, str]] = []
+
+    def visit(hwnd: int, _: int) -> bool:
+        owner = wt.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
+        if owner.value == pid and user32.IsWindowVisible(hwnd):
+            name, title = ctypes.create_unicode_buffer(256), ctypes.create_unicode_buffer(512)
+            user32.GetClassNameW(hwnd, name, len(name))
+            user32.GetWindowTextW(hwnd, title, len(title))
+            found.append((name.value, title.value))
+        return True
+
+    user32.EnumWindows(enum_proc(visit), 0)
+    return found
+
+
+def _check_main_window(pid: int) -> None:
+    """Vivo non basta: il bootloader di PyInstaller, se l'avvio fallisce, resta
+    aperto con una MessageBox (#32770) d'errore invece della finestra."""
+    windows = process_windows(pid)
+    if not any(cls != "#32770" and title == "StemForge" for cls, title in windows):
+        raise AssertionError(f"nessuna finestra principale di StemForge; finestre del processo: {windows}")
+
+
 def check_open_with_launch(app_dir: Path, alive_s: float) -> str:
     """Lancia l'app esattamente come "Apri con": il comando del ProgID con %1."""
     command = _value(winreg.HKEY_CURRENT_USER, rf"{CLASSES}\{PROG_ID}\shell\open\command")
@@ -258,6 +289,7 @@ def check_open_with_launch(app_dir: Path, alive_s: float) -> str:
             time.sleep(alive_s)
             if proc.poll() is not None:
                 raise AssertionError(f"l'app aperta con un wav è uscita da sola (codice {proc.returncode})")
+            _check_main_window(proc.pid)
         finally:
             subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
             proc.wait(timeout=30)
@@ -268,4 +300,5 @@ def check_open_with_launch(app_dir: Path, alive_s: float) -> str:
         appended = handle.read().decode("utf-8", errors="replace")
     if "Traceback" in appended:
         raise AssertionError(f"traceback nel log dopo 'Apri con':\n{appended[-4000:]}")
-    return f"'Apri con' su un wav: app viva dopo {alive_s:.0f} s, log senza traceback ({len(appended)} caratteri nuovi)"
+    return (f"'Apri con' su un wav: app viva dopo {alive_s:.0f} s con la finestra principale, "
+            f"log senza traceback ({len(appended)} caratteri nuovi)")
