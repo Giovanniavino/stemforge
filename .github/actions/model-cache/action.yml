@@ -1,0 +1,39 @@
+name: Cache dei modelli StemForge
+description: >
+  Mette in cache la cartella dei pesi che l'app e i test lenti usano
+  davvero (engine/paths.py, BUILD_SPEC §9.2): ~1 GB che altrimenti ogni
+  job riscaricherebbe da dl.fbaipublicfiles.com. Non serve Python: la
+  usano anche i job che collaudano solo il pacchetto.
+
+outputs:
+  path:
+    description: La cartella dei modelli su questo runner
+    value: ${{ steps.dir.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Cartella dei modelli
+      id: dir
+      shell: bash
+      # Stesse regole di stemforge.engine.paths.data_dir(): se cambiano li',
+      # cambiano qui (tests/unit/test_ci_workflows.py lo controlla).
+      run: |
+        case "$RUNNER_OS" in
+          macOS) dir="$HOME/Library/Application Support/StemForge/models" ;;
+          Windows) dir="$(cygpath -u "$LOCALAPPDATA")/StemForge/models" ;;
+          *) dir="${XDG_DATA_HOME:-$HOME/.local/share}/stemforge/models" ;;
+        esac
+        mkdir -p "$dir"
+        if [ "$RUNNER_OS" = Windows ]; then dir="$(cygpath -w "$dir")"; fi
+        echo "path=$dir" >> "$GITHUB_OUTPUT"
+
+    # La chiave segue i file che fissano URL e SHA-256 dei pesi: un peso
+    # nuovo o cambiato invalida la cache; restore-keys riusa il resto.
+    - name: Cache
+      uses: actions/cache@v6
+      with:
+        path: ${{ steps.dir.outputs.path }}
+        key: stemforge-models-v1-${{ runner.os }}-${{ hashFiles('src/stemforge/engine/demucs4.py', 'src/stemforge/engine/drumsplit.py', 'src/stemforge/engine/vocalsplit.py', 'src/stemforge/engine/dereverb.py', 'src/stemforge/engine/roformer.py') }}
+        restore-keys: |
+          stemforge-models-v1-${{ runner.os }}-

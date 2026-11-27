@@ -1,39 +1,217 @@
-# StemForge — comandi di sviluppo (BUILD_SPEC §3)
-# Sul Mac: make dev / test / build. Su Windows (dev-box): usare .venv\Scripts\python.exe.
+# StemForge — comandi di sviluppo, test e build (BUILD_SPEC §3, §9, §10.6)
+#
+# GNU make su macOS, Linux e Git Bash su Windows (dove make non c'e',
+# "mingw32-make" di Strawberry Perl o MSYS2 va bene, oppure si copiano i
+# comandi stampati da "make -n <target>").
+#
+# Il profilo di build (§2.1) si deduce dalla macchina; si forza con
+#   make <target> PROFILE=legacy-intel|mac-arm64|win-x64|linux-x64
+# VPY=<python> usa un ambiente gia' pronto invece di .venv.
+#
+#   make dev              venv dal lock del profilo (hash, solo wheel)
+#   make test             giro veloce: tutto tranne slow/fuzz/chaos/soak/frozen
+#   make test-slow        Demucs vero su CPU (scarica i pesi la prima volta)
+#   make test-compat      il motore con il torch di QUESTO ambiente (§10.6)
+#   make test-fuzz | test-chaos | test-soak    famiglie su richiesta
+#   make test-frozen      la batteria contro l'app impacchettata (FROZEN_EXE=...)
+#   make check-workflows  actionlint (ACTIONLINT=<binario>) e regole dei workflow
+#   make lock | lock-check    rigenera | verifica i lock dei profili
+#   make ffmpeg           FFmpeg LGPL del profilo (D9, packaging/ffmpeg/)
+#   make build            app PyInstaller del profilo (build-release: FFmpeg obbligatorio)
+#   make check-min-os     macOS minimo di ogni binario dell'app (solo Mac)
+#   make selftest         --selftest sull'app costruita
+#   make package          pacchetto del profilo: DMG, installer Inno Setup, AppImage
+#   make selftest-package --selftest sul pacchetto come lo riceve l'utente
+#   make installer        zip "Installa StemForge.command" del Mac mini (§9.5),
+#                         sempre per legacy-intel; l'installer del profilo e' "package"
+#   make notarize         firma Developer ID + notarizzazione (credenziali in env)
 
-PY ?= python3.11
+ifeq ($(OS),Windows_NT)
+  DETECTED_PROFILE := win-x64
+else
+  UNAME_S := $(shell uname -s)
+  UNAME_M := $(shell uname -m)
+  ifeq ($(UNAME_S),Darwin)
+    DETECTED_PROFILE := $(if $(filter arm64,$(UNAME_M)),mac-arm64,legacy-intel)
+  else
+    DETECTED_PROFILE := linux-x64
+  endif
+endif
+PROFILE ?= $(DETECTED_PROFILE)
 
-.PHONY: dev test test-slow lock-macos build sign notarize installer clean
+LOCK_legacy-intel := requirements-macos-x86_64.lock
+LOCK_mac-arm64    := requirements-macos-arm64.lock
+LOCK_win-x64      := requirements-windows-x64.lock
+LOCK_linux-x64    := requirements-linux-x64.lock
+LOCK := $(LOCK_$(PROFILE))
+ifeq ($(LOCK),)
+  $(error profilo sconosciuto "$(PROFILE)": legacy-intel, mac-arm64, win-x64, linux-x64)
+endif
 
-# pacchetto inviabile all'utente Mac: zip con doppio-click che costruisce
-# l'app nativamente sul suo Mac (funziona anche dal dev-box Windows)
-installer:
-	python packaging/make_installer.py
+# PySide6 6.4 (legacy-intel) richiede Python < 3.12 (§2.2)
+PYVER := $(if $(filter legacy-intel,$(PROFILE)),3.11,3.12)
+MACOS_MIN_legacy-intel := 10.15
+MACOS_MIN_mac-arm64    := 11.0
+DMG_ARCH_legacy-intel  := x86_64
+DMG_ARCH_mac-arm64     := arm64
+
+VENV ?= .venv
+ifeq ($(OS),Windows_NT)
+  PY_BASE ?= py -$(PYVER)
+  VPY ?= $(VENV)/Scripts/python.exe
+else
+  PY_BASE ?= python$(PYVER)
+  VPY ?= $(VENV)/bin/python
+endif
+
+# Python puro pubblicato solo come sorgente (packaging/gen_locks.py,
+# SDIST_ALLOWLIST): si installa senza compilatore, tutto il resto e' wheel.
+SDIST_ONLY := antlr4-python3-runtime,demucs,dora-search
+DIST := packaging/dist
+WORK := packaging/build
+# ".*" finale: con un checkout CRLF (Windows) il \r non finisce nella versione
+VERSION := $(shell sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/stemforge/__init__.py)
+
+APP_EXE_legacy-intel := $(DIST)/StemForge.app/Contents/MacOS/StemForge
+APP_EXE_mac-arm64    := $(DIST)/StemForge.app/Contents/MacOS/StemForge
+APP_EXE_win-x64      := $(DIST)/StemForge/StemForge.exe
+APP_EXE_linux-x64    := $(DIST)/StemForge/StemForge
+APP_EXE := $(APP_EXE_$(PROFILE))
+FROZEN_EXE ?= $(APP_EXE)
+SELFTEST_ARGS ?=
+REQUIRE_FFMPEG ?= 0
+PYTEST := "$(VPY)" -m pytest tests -q
+# famiglie su richiesta ancora vuote: pytest esce con 5 (nessun test), non e' un errore
+NONE_OK := || [ $$? -eq 5 ]
+
+.PHONY: dev test test-slow test-compat test-fuzz test-chaos test-soak test-frozen check-workflows \
+	lock lock-check ffmpeg build build-release check-min-os selftest package \
+	package-legacy-intel package-mac-arm64 package-win-x64 package-linux-x64 \
+	selftest-package selftest-package-legacy-intel selftest-package-mac-arm64 \
+	selftest-package-win-x64 selftest-package-linux-x64 \
+	installer sign notarize clean profile
+
+profile:
+	@echo "profilo $(PROFILE) | lock $(LOCK) | python $(PYVER) | versione $(VERSION)"
 
 dev:
-	$(PY) -m venv .venv
-	.venv/bin/python -m pip install --require-hashes -r requirements-macos-x86_64.lock
-	.venv/bin/python -m pip install -e . --no-deps
-	.venv/bin/python -m pip install pytest pyinstaller
+	$(PY_BASE) -m venv $(VENV)
+	"$(VPY)" -m pip install --upgrade pip "setuptools>=77" wheel
+	"$(VPY)" -m pip install --require-hashes --only-binary :all: \
+		--no-binary $(SDIST_ONLY) -r $(LOCK)
+	"$(VPY)" -m pip install --no-deps --no-build-isolation -e .
+	"$(VPY)" -m pip install -r packaging/requirements-build.txt
+
+# -- famiglie di test (§10.6): "-m" sulla riga di comando vince su addopts
 
 test:
-	.venv/bin/python -m pytest tests -q
+	$(PYTEST)
 
 test-slow:
-	.venv/bin/python -m pytest tests -q -m slow -s
+	$(PYTEST) -m slow -s
 
-lock-macos:
-	.venv/bin/python packaging/gen_macos_lock.py > requirements-macos-x86_64.lock
+test-compat:
+	$(PYTEST) -m compat
+
+test-fuzz:
+	$(PYTEST) -m fuzz $(NONE_OK)
+
+test-chaos:
+	$(PYTEST) -m chaos $(NONE_OK)
+
+test-soak:
+	$(PYTEST) -m soak -s $(NONE_OK)
+
+test-frozen:
+	@test -e "$(FROZEN_EXE)" || { echo "app impacchettata assente: $(FROZEN_EXE) (make build, o FROZEN_EXE=...)" >&2; exit 1; }
+	STEMFORGE_FROZEN_EXE="$(FROZEN_EXE)" $(PYTEST) -m frozen
+
+# lo stesso actionlint 1.7.12 del job "workflows" di ci.yml, dal PATH o da
+# ACTIONLINT=...; con shellcheck (PATH o SHELLCHECK=...) controlla anche gli
+# script run:, senza lo salta in silenzio. Il flag dopo il binario serve anche
+# al make nativo di Windows, che rompe una riga che finisce con le virgolette.
+ACTIONLINT ?= actionlint
+SHELLCHECK ?= shellcheck
+check-workflows:
+	"$(ACTIONLINT)" -shellcheck="$(SHELLCHECK)" -color=false
+	"$(VPY)" -m pytest -q tests/unit/test_ci_workflows.py tests/unit/test_ci_compat_stack.py
+
+# -- lock e build ------------------------------------------------------------
+
+lock:
+	"$(VPY)" packaging/gen_locks.py
+
+lock-check:
+	"$(VPY)" packaging/gen_locks.py --check
+
+# win-x64 si compila su Linux/WSL con mingw-w64 (packaging/ffmpeg/build.sh)
+ffmpeg:
+	bash packaging/ffmpeg/build.sh $(PROFILE)
 
 build:
-	cd packaging && ../.venv/bin/pyinstaller stemforge.spec --noconfirm
+	STEMFORGE_PROFILE=$(PROFILE) STEMFORGE_REQUIRE_FFMPEG=$(REQUIRE_FFMPEG) \
+		"$(VPY)" -m PyInstaller packaging/stemforge.spec --noconfirm \
+		--distpath $(DIST) --workpath $(WORK)
+
+build-release:
+	$(MAKE) build REQUIRE_FFMPEG=1
+
+check-min-os:
+	$(if $(MACOS_MIN_$(PROFILE)),,$(error check-min-os vale solo per legacy-intel e mac-arm64))
+	"$(VPY)" packaging/macos/check_min_os.py $(DIST)/StemForge.app $(MACOS_MIN_$(PROFILE)) \
+		--arch $(DMG_ARCH_$(PROFILE))
+
+selftest:
+	@mkdir -p $(WORK)
+	"$(VPY)" packaging/ci/run_selftest.py "$(APP_EXE)" $(WORK)/selftest.json $(SELFTEST_ARGS)
+
+package: package-$(PROFILE)
+
+DMG := dist/StemForge-$(VERSION)-macos-$(DMG_ARCH_$(PROFILE)).dmg
+SETUP := dist/StemForge-$(VERSION)-windows-x64-setup.exe
+APPIMAGE := dist/StemForge-$(VERSION)-linux-x86_64.AppImage
+
+package-legacy-intel package-mac-arm64:
+	sh packaging/macos/make_dmg.sh $(DIST)/StemForge.app $(DMG)
+
+# icona, versione e misura dei percorsi lunghi: packaging/windows/build_installer.py
+package-win-x64:
+	"$(VPY)" packaging/windows/build_installer.py
+
+# dentro manylinux_2_28 (CI) o con packaging/linux/rootless_container.py
+package-linux-x64:
+	STEMFORGE_REQUIRE_FFMPEG=$(REQUIRE_FFMPEG) bash packaging/linux/build_appimage.sh
+
+selftest-package: selftest-package-$(PROFILE)
+
+# il DMG montato in sola lettura, come lo apre l'utente
+selftest-package-legacy-intel selftest-package-mac-arm64:
+	@mkdir -p $(WORK)
+	@mnt="$$(mktemp -d)" && hdiutil attach "$(DMG)" -nobrowse -readonly -mountpoint "$$mnt" && \
+	"$(VPY)" packaging/ci/run_selftest.py "$$mnt/StemForge.app/Contents/MacOS/StemForge" \
+		$(WORK)/selftest-dmg.json $(SELFTEST_ARGS); rc=$$?; hdiutil detach "$$mnt" -force; exit $$rc
+
+# installa in silenzio, collauda l'app installata, disinstalla
+selftest-package-win-x64:
+	@mkdir -p $(WORK)
+	"$(VPY)" packaging/ci/verify_windows_installer.py "$(SETUP)" $(WORK)/installer.json
+
+selftest-package-linux-x64:
+	@mkdir -p $(WORK)
+	APPIMAGE_EXTRACT_AND_RUN=1 "$(VPY)" packaging/ci/run_selftest.py "$(APPIMAGE)" \
+		$(WORK)/selftest-appimage.json $(SELFTEST_ARGS)
+
+# pacchetto inviabile all'utente del Mac mini: zip con doppio-click che
+# costruisce l'app nativamente sul suo Mac (funziona anche dal dev-box)
+installer:
+	"$(VPY)" packaging/make_installer.py
 
 # firma ad-hoc per uso personale (§9.3): identita' "-" e' il default dello spec
 sign: build
 
 # distribuzione a terzi: Developer ID + gate licenze (§9.3)
 notarize:
-	sh packaging/notarize.sh packaging/dist/StemForge.app
+	PYTHON="$(VPY)" sh packaging/notarize.sh $(DIST)/StemForge.app $(DMG)
 
 clean:
-	rm -rf packaging/build packaging/dist src/stemforge.egg-info
+	rm -rf $(WORK) $(DIST) src/stemforge.egg-info

@@ -1,0 +1,511 @@
+name: Release
+
+# BUILD_SPEC §9.6. Per ogni profilo (§2.1): test veloci e lenti con
+# Demucs vero, FFmpeg LGPL (D9), build PyInstaller, macOS minimo dei
+# binari, --selftest sull'app, pacchetto, di nuovo --selftest e la
+# batteria "frozen" (§10.6) sul pacchetto cosi' come lo riceve l'utente.
+# Poi un secondo giro di collaudo su altre versioni di sistema, e sui tag
+# una release IN BOZZA con SHA256SUMS.txt: pubblicarla e' un click umano.
+#
+# Settimanale anche senza modifiche: per accorgersi se una dipendenza
+# sparisce da PyPI prima che serva una release.
+#
+# La firma e' facoltativa (§9.3): parte solo se nei secrets ci sono le
+# credenziali (README, "Distribuzione firmata"); senza, l'app Mac e'
+# firmata ad-hoc e l'installer Windows non e' firmato.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * 1"
+
+# Nessun permesso di default: ogni job dichiara solo cio' che usa.
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  QT_QPA_PLATFORM: offscreen
+  # la build fallisce se manca il FFmpeg LGPL del profilo (stemforge.spec)
+  STEMFORGE_REQUIRE_FFMPEG: "1"
+  # i test frozen: un encoder introvabile e' un errore, non un salto
+  STEMFORGE_FROZEN_STRICT: "1"
+
+jobs:
+  version:
+    name: Versione (il tag deve coincidere)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: read
+        shell: bash
+        run: |
+          version="$(sed -n 's/^__version__ = "\([^"]*\)".*/\1/p' src/stemforge/__init__.py | tr -d '\r')"
+          [ -n "$version" ] || { echo "::error::__version__ non trovato in src/stemforge/__init__.py"; exit 1; }
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::il tag $GITHUB_REF_NAME non coincide con stemforge.__version__ ($version): atteso v$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  ffmpeg-win:
+    # contratto dell'area FFmpeg: win-x64 si cross-compila su Ubuntu con
+    # mingw-w64, il collaudo a runtime lo fa il job Windows
+    name: FFmpeg LGPL win-x64 (cross-compilato)
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: win-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-win-x64
+          path: packaging/ffmpeg/out/win-x64/
+          if-no-files-found: error
+          retention-days: 7
+
+  macos:
+    name: Build ${{ matrix.profile }}
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-14 e' ritirato (run del 09-11-2026): Apple Silicon su macos-15
+          - { profile: mac-arm64, os: macos-15, python: "3.12", lock: requirements-macos-arm64.lock, arch: arm64, min: "11.0" }
+          - { profile: legacy-intel, os: macos-15-intel, python: "3.11", lock: requirements-macos-x86_64.lock, arch: x86_64, min: "10.15" }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    env:
+      STEMFORGE_PROFILE: ${{ matrix.profile }}
+      STEMFORGE_TARGET_ARCH: ${{ matrix.arch }}
+      STEMFORGE_MACOS_MIN: ${{ matrix.min }}
+      DMG: StemForge-${{ needs.version.outputs.version }}-macos-${{ matrix.arch }}.dmg
+      HAS_APPLE_SIGNING: ${{ secrets.APPLE_CERT_P12_BASE64 != '' && secrets.APPLE_CERT_PASSWORD != '' && secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-stemforge
+        with:
+          python: ${{ matrix.python }}
+          lock: ${{ matrix.lock }}
+          forbid-pyav: "true"
+      - uses: ./.github/actions/model-cache
+      - id: ffmpeg
+        uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: ${{ matrix.profile }}
+      - name: FFmpeg per i test
+        run: echo "STEMFORGE_FFMPEG=$PWD/${{ steps.ffmpeg.outputs.dir }}" >> "$GITHUB_ENV"
+      - name: Test veloci
+        run: '"$STEMFORGE_PY" -m pytest tests -q'
+      - name: Test lenti (Demucs vero su CPU)
+        run: '"$STEMFORGE_PY" -m pytest tests -q -m slow'
+      - name: PyInstaller
+        run: '"$STEMFORGE_PY" -m PyInstaller packaging/stemforge.spec --noconfirm --clean --distpath packaging/dist --workpath packaging/build'
+      - name: macOS minimo di ogni binario (§9.1)
+        run: '"$STEMFORGE_PY" packaging/macos/check_min_os.py packaging/dist/StemForge.app "${{ matrix.min }}" --arch "${{ matrix.arch }}"'
+      - name: --selftest sull'app
+        run: |
+          mkdir -p reports
+          "$STEMFORGE_PY" packaging/ci/run_selftest.py packaging/dist/StemForge.app/Contents/MacOS/StemForge reports/selftest-app.json
+
+      - name: Firma non configurata
+        if: env.HAS_APPLE_SIGNING != 'true'
+        run: |
+          echo "::notice::secrets Apple assenti o incompleti: DMG con firma ad-hoc, Gatekeeper avvisera' (§9.3)"
+      - name: Certificato Developer ID in un portachiavi temporaneo
+        if: env.HAS_APPLE_SIGNING == 'true'
+        env:
+          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
+          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/stemforge.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          printf '%s' "$APPLE_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$keychain_password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" login.keychain-db
+      - name: Firma Developer ID, DMG e notarizzazione
+        if: env.HAS_APPLE_SIGNING == 'true'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: PYTHON="$STEMFORGE_PY" sh packaging/notarize.sh packaging/dist/StemForge.app "dist/$DMG"
+      - name: DMG (firma ad-hoc)
+        if: env.HAS_APPLE_SIGNING != 'true'
+        run: sh packaging/macos/make_dmg.sh packaging/dist/StemForge.app "dist/$DMG"
+      - name: Portachiavi temporaneo rimosso
+        if: always() && env.HAS_APPLE_SIGNING == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/stemforge.keychain-db" || true
+      # §9.5: accanto al DMG Intel, lo zip che costruisce l'app sul Mac mini
+      # (le note di release lo nominano). Prende il FFmpeg LGPL appena
+      # costruito da packaging/ffmpeg/out/legacy-intel/.
+      - name: Installer zip del Mac mini
+        if: matrix.profile == 'legacy-intel'
+        run: |
+          # scrive dist/StemForge-Installer.zip (il nome delle note di release)
+          "$STEMFORGE_PY" packaging/make_installer.py
+          test -s dist/StemForge-Installer.zip
+
+      - name: --selftest e batteria frozen sul DMG montato
+        run: |
+          mount="$(mktemp -d)"
+          hdiutil attach "dist/$DMG" -nobrowse -readonly -mountpoint "$mount"
+          trap 'hdiutil detach "$mount" -force' EXIT
+          exe="$mount/StemForge.app/Contents/MacOS/StemForge"
+          "$STEMFORGE_PY" packaging/ci/run_selftest.py "$exe" reports/selftest-dmg.json
+          STEMFORGE_FROZEN_EXE="$exe" "$STEMFORGE_PY" -m pytest tests -q -m frozen
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-${{ matrix.profile }}
+          # il DMG e, per legacy-intel, lo zip: in dist/ non c'e' altro
+          path: dist/
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-${{ matrix.profile }}
+          path: reports/
+          if-no-files-found: ignore
+
+  windows:
+    name: Build win-x64
+    needs: [version, ffmpeg-win]
+    runs-on: windows-2022
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    env:
+      STEMFORGE_PROFILE: win-x64
+      SETUP: dist/StemForge-${{ needs.version.outputs.version }}-windows-x64-setup.exe
+      HAS_WINDOWS_SIGNING: ${{ secrets.WINDOWS_CERT_PFX_BASE64 != '' && secrets.WINDOWS_CERT_PASSWORD != '' }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-win-x64
+          path: packaging/ffmpeg/out/win-x64
+      - name: Licenza del FFmpeg a runtime, sul Windows vero
+        run: |
+          bash packaging/ffmpeg/check_license.sh packaging/ffmpeg/out/win-x64/ffmpeg.exe
+          echo "STEMFORGE_FFMPEG=$(cygpath -w "$PWD/packaging/ffmpeg/out/win-x64")" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/setup-stemforge
+        with:
+          python: "3.12"
+          lock: requirements-windows-x64.lock
+          forbid-pyav: "true"
+      - uses: ./.github/actions/model-cache
+      - name: Test veloci
+        run: '"$STEMFORGE_PY" -m pytest tests -q'
+      - name: Test lenti (Demucs vero su CPU)
+        run: '"$STEMFORGE_PY" -m pytest tests -q -m slow'
+      - name: PyInstaller
+        run: '"$STEMFORGE_PY" -m PyInstaller packaging/stemforge.spec --noconfirm --clean --distpath packaging/dist --workpath packaging/build'
+      - name: --selftest e batteria frozen sull'app
+        run: |
+          mkdir -p reports
+          exe="$(cygpath -w "$PWD/packaging/dist/StemForge/StemForge.exe")"
+          "$STEMFORGE_PY" packaging/ci/run_selftest.py "$exe" reports/selftest-app.json
+          STEMFORGE_FROZEN_EXE="$exe" "$STEMFORGE_PY" -m pytest tests -q -m frozen
+      - name: Firma non configurata
+        if: env.HAS_WINDOWS_SIGNING != 'true'
+        run: |
+          echo "::notice::secrets Authenticode assenti: installer non firmato, SmartScreen avvisera' (§9.3)"
+      - name: Firma dell'app
+        if: env.HAS_WINDOWS_SIGNING == 'true'
+        uses: ./.github/actions/sign-windows
+        with:
+          files: packaging/dist/StemForge/StemForge.exe
+          pfx-base64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          password: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      - name: Installer Inno Setup
+        run: '"$STEMFORGE_PY" packaging/windows/build_installer.py'
+      - name: Firma dell'installer
+        if: env.HAS_WINDOWS_SIGNING == 'true'
+        uses: ./.github/actions/sign-windows
+        with:
+          files: ${{ env.SETUP }}
+          pfx-base64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          password: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+      - name: Installa in silenzio, --selftest sull'app installata, disinstalla
+        run: '"$STEMFORGE_PY" packaging/ci/verify_windows_installer.py "$SETUP" reports/installer.json --matrix'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-win-x64
+          path: ${{ env.SETUP }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-win-x64
+          path: reports/
+          if-no-files-found: ignore
+
+  linux:
+    # glibc 2.28 (§9.8): tutto cio' che entra nell'AppImage e' costruito
+    # qui dentro, cosi' gira su Ubuntu 20.04 e successive
+    name: Build linux-x64
+    needs: version
+    runs-on: ubuntu-24.04
+    container:
+      image: quay.io/pypa/manylinux_2_28_x86_64:2026.11.14-1@sha256:d086f64cddcace250ef0f0073583c51b8298159303290a730c9f59bd91edfd2c
+    timeout-minutes: 240
+    permissions:
+      contents: read
+    env:
+      STEMFORGE_PROFILE: linux-x64
+      # nel container non c'e' FUSE: il runtime type2 estrae e lancia
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Librerie che l'AppImage lascia all'host (packaging/linux/host_libs.txt)
+        # servono ai test della UI e al collaudo dell'app in questo container
+        run: |
+          dnf -y -q --setopt=install_weak_deps=False install \
+            git mesa-libGL mesa-libEGL libglvnd-opengl mesa-libgbm libdrm \
+            libX11 libX11-xcb libxcb libxkbcommon libxkbcommon-x11 fontconfig freetype \
+            libwayland-client libwayland-cursor libwayland-egl \
+            dbus-libs glib2 pulseaudio-libs alsa-lib
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-stemforge
+        with:
+          python: "3.12"
+          lock: requirements-linux-x64.lock
+          forbid-pyav: "true"
+      - uses: ./.github/actions/model-cache
+      - id: ffmpeg
+        uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: linux-x64
+      - name: FFmpeg per i test
+        run: echo "STEMFORGE_FFMPEG=$PWD/${{ steps.ffmpeg.outputs.dir }}" >> "$GITHUB_ENV"
+      - name: Test veloci
+        run: '"$STEMFORGE_PY" -m pytest tests -q'
+      - name: Test lenti (Demucs vero su CPU)
+        run: '"$STEMFORGE_PY" -m pytest tests -q -m slow'
+      # build_python.sh non rifa' nulla se il prefisso contiene gia' la sua
+      # versione: compilare CPython costa minuti a ogni giro
+      - name: Cache del CPython con libpython condivisa
+        uses: actions/cache@v6
+        with:
+          path: .cache/appimage-python
+          key: appimage-python-v1-${{ hashFiles('packaging/linux/build_python.sh') }}
+      - name: AppImage (PyInstaller dentro build_appimage.sh)
+        run: |
+          STEMFORGE_PYTHON_PREFIX="$PWD/.cache/appimage-python" STEMFORGE_DIST="$PWD/dist" \
+            bash packaging/linux/build_appimage.sh
+      - name: --selftest sull'app
+        run: |
+          mkdir -p reports
+          "$STEMFORGE_PY" packaging/ci/run_selftest.py build/appimage/dist/StemForge/StemForge reports/selftest-app.json
+      - name: --selftest e batteria frozen sull'AppImage
+        run: |
+          appimage="$(ls dist/StemForge-*-linux-x86_64.AppImage)"
+          "$STEMFORGE_PY" packaging/ci/run_selftest.py "$appimage" reports/selftest-appimage.json
+          STEMFORGE_FROZEN_EXE="$PWD/$appimage" "$STEMFORGE_PY" -m pytest tests -q -m frozen
+          cp dist/StemForge-*-linux-x86_64.libs.txt reports/
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package-linux-x64
+          path: dist/StemForge-*-linux-x86_64.AppImage
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-linux-x64
+          path: reports/
+          if-no-files-found: ignore
+
+  # -- secondo giro: il pacchetto su altre versioni di sistema (§9.6) -------
+  # Solo il pacchetto e uno script di collaudo con la libreria standard:
+  # nessun ambiente di sviluppo che possa coprire un file mancante.
+
+  verify-macos:
+    name: Collaudo ${{ matrix.profile }} su ${{ matrix.os }}
+    needs: [version, macos]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # le etichette macOS 26 documentate in actions/runner-images (19-11-2026)
+          - { profile: mac-arm64, os: macos-26, arch: arm64 }
+          - { profile: legacy-intel, os: macos-26-intel, arch: x86_64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      DMG: StemForge-${{ needs.version.outputs.version }}-macos-${{ matrix.arch }}.dmg
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/model-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-${{ matrix.profile }}
+          path: dist
+      - name: --selftest sul DMG montato
+        run: |
+          mkdir -p reports
+          mount="$(mktemp -d)"
+          hdiutil attach "dist/$DMG" -nobrowse -readonly -mountpoint "$mount"
+          trap 'hdiutil detach "$mount" -force' EXIT
+          python packaging/ci/run_selftest.py "$mount/StemForge.app/Contents/MacOS/StemForge" "reports/selftest-${{ matrix.os }}.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-${{ matrix.profile }}-${{ matrix.os }}
+          path: reports/
+          if-no-files-found: ignore
+
+  verify-windows:
+    name: Collaudo win-x64 su windows-2025
+    needs: [version, windows]
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      SETUP: dist/StemForge-${{ needs.version.outputs.version }}-windows-x64-setup.exe
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: ./.github/actions/model-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-win-x64
+          path: dist
+      - name: Installa, collauda, disinstalla
+        run: |
+          mkdir -p reports
+          python packaging/ci/verify_windows_installer.py "$SETUP" reports/installer-windows-2025.json --matrix
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-win-x64-windows-2025
+          path: reports/
+          if-no-files-found: ignore
+
+  verify-linux:
+    # nessun runner Ubuntu 20.04: un container pulito, che e' anche piu'
+    # vicino al desktop dell'utente (solo le librerie di host_libs.txt)
+    name: Collaudo AppImage su ${{ matrix.image }}
+    needs: [version, linux]
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["ubuntu:20.04", "ubuntu:24.04"]
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ matrix.image }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/model-cache
+      - uses: actions/download-artifact@v8
+        with:
+          name: package-linux-x64
+          path: dist
+      - name: test_appimage.sh (librerie dell'host, plugin Qt, --selftest)
+        env:
+          IMAGE: ${{ matrix.image }}
+        run: |
+          mkdir -p reports
+          bash packaging/linux/test_appimage.sh dist/StemForge-*-linux-x86_64.AppImage "reports/selftest-${IMAGE/:/-}.json"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: reports-linux-x64-${{ strategy.job-index }}
+          path: reports/
+          if-no-files-found: ignore
+
+  publish:
+    name: Release in bozza
+    if: github.ref_type == 'tag'
+    needs: [version, macos, windows, linux, verify-macos, verify-windows, verify-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write  # creare la release e caricarne i file, niente altro
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: package-*
+          path: release
+          merge-multiple: true
+      - name: SHA256SUMS.txt
+        working-directory: release
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Release in bozza (pubblicarla e' un click umano, §9.6)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          if state="$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null)"; then
+            # un nuovo giro sullo stesso tag aggiorna la bozza; una release
+            # gia' pubblicata non si tocca mai
+            [ "$state" = true ] || { echo "::error::la release $TAG e' gia' pubblicata"; exit 1; }
+            gh release upload "$TAG" release/* --clobber
+          else
+            gh release create "$TAG" --draft --verify-tag \
+              --title "StemForge $VERSION" --notes-file packaging/release-notes.md release/*
+          fi

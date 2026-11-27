@@ -1,6 +1,8 @@
 name: CI
 
-# A ogni modifica: test veloci sulle tre piattaforme + validità dei lock.
+# A ogni modifica (§9.6): test veloci sui quattro profili (col FFmpeg LGPL
+# di D9, in cache), validita' dei lock, e il motore con entrambe le pile
+# di torch (pytest -m compat, D7).
 # La build completa, il collaudo dei pacchetti e i test con i modelli veri
 # stanno in release.yml.
 
@@ -17,37 +19,184 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
 jobs:
+  workflows:
+    # Un workflow rotto si scopre al push, non il giorno del tag.
+    name: Workflow validi (actionlint)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: actionlint a versione e SHA-256 fissati
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: "1.7.12"
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/$archive"
+          echo "$ACTIONLINT_SHA256  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" actionlint
+          # actionlint usa lo ShellCheck preinstallato sul runner per i run:
+          "$RUNNER_TEMP/actionlint" -color
+
   locks:
     name: Lock installabili senza compilare
-    runs-on: ubuntu-latest
+    # etichetta esplicita: ubuntu-latest cambia versione da sola (D6)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: uv alla versione fissata (packaging/requirements-build.txt)
+        shell: bash
+        run: |
+          # gen_locks.py risolve con uv; il pin vive in un posto solo
+          pin="$(grep -E '^uv==' packaging/requirements-build.txt || true)"
+          if [ -n "$pin" ]; then python -m pip install "$pin"; fi
       - run: python packaging/gen_locks.py --check
 
+  ffmpeg-win:
+    # Come in release.yml: win-x64 si cross-compila su Ubuntu (contratto
+    # dell'area FFmpeg). Con la cache calda costa un minuto.
+    name: FFmpeg LGPL win-x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: win-x64
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-win-x64
+          path: packaging/ffmpeg/out/win-x64/
+          if-no-files-found: error
+          retention-days: 1
+
   test:
-    name: Test ${{ matrix.name }}
+    # Senza PyAV (D9) m4a/alac passano solo dal FFmpeg LGPL: senza il
+    # binario i test FFmpeg si saltano, e un test che si salta sempre non
+    # protegge niente. Per questo anche il giro veloce lo costruisce.
+    name: Test ${{ matrix.profile }}
+    needs: ffmpeg-win
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { name: windows-x64, os: windows-2022, python: "3.12", lock: requirements-windows-x64.lock }
-          - { name: macos-arm64, os: macos-14, python: "3.12", lock: requirements-macos-arm64.lock }
-          - { name: macos-x86_64, os: macos-15-intel, python: "3.11", lock: requirements-macos-x86_64.lock }
+          - { profile: win-x64, os: windows-2022, python: "3.12", lock: requirements-windows-x64.lock }
+          # macos-14 non e' piu' disponibile (run del 09-11-2026)
+          - { profile: mac-arm64, os: macos-15, python: "3.12", lock: requirements-macos-arm64.lock }
+          - { profile: legacy-intel, os: macos-15-intel, python: "3.11", lock: requirements-macos-x86_64.lock }
+          - { profile: linux-x64, os: ubuntu-24.04, python: "3.12", lock: requirements-linux-x64.lock }
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 40
+    timeout-minutes: 60
     env:
       QT_QPA_PLATFORM: offscreen
-      PYTHONUTF8: "1"
+      # fuori dal container build.sh rientra in manylinux con docker: la
+      # stessa immagine, fissata per digest, della release
+      MANYLINUX_IMAGE: quay.io/pypa/manylinux_2_28_x86_64:2026.11.14-1@sha256:d086f64cddcace250ef0f0073583c51b8298159303290a730c9f59bd91edfd2c
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+      - name: FFmpeg win-x64 (dal job ffmpeg-win)
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v8
+        with:
+          name: ffmpeg-win-x64
+          path: packaging/ffmpeg/out/win-x64
+      - name: FFmpeg del profilo
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/ffmpeg-lgpl
+        with:
+          profile: ${{ matrix.profile }}
+      - name: FFmpeg per i test (licenza ricontrollata a runtime)
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+        run: |
+          out="$PWD/packaging/ffmpeg/out/$PROFILE"
+          if [ "$RUNNER_OS" = Windows ]; then
+            bash packaging/ffmpeg/check_license.sh "$out/ffmpeg.exe"
+            out="$(cygpath -w "$out")"
+          fi
+          echo "STEMFORGE_FFMPEG=$out" >> "$GITHUB_ENV"
+      - name: Librerie di sistema per Qt (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          # le stesse che l'AppImage lascia all'host (packaging/linux/host_libs.txt)
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 libfreetype6 \
+            libdbus-1-3 libglib2.0-0t64 libpulse0 libasound2t64
       - uses: ./.github/actions/setup-stemforge
         with:
           python: ${{ matrix.python }}
           lock: ${{ matrix.lock }}
-      - name: Test
+      - name: Test veloci (compat compreso)
         shell: bash
         run: '"$STEMFORGE_PY" -m pytest tests -q'
+
+  compat:
+    # Il motore con torch 2.2.2 E 2.10 (D7, §10.6), su Linux perche' e' il
+    # runner piu' rapido. Il lock macOS x86_64 non si installa fuori dal
+    # Mac: .github/compat/legacy-requirements.txt ne copia le versioni
+    # (tests/unit/test_ci_compat_stack.py), con torch/torchaudio "+cpu".
+    name: Compat ${{ matrix.stack }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { stack: legacy, python: "3.11" }
+          - { stack: modern, python: "3.12" }
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v7
+      - name: Librerie di sistema per Qt
+        # pytest raccoglie anche i test della UI prima di filtrare per marker
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends \
+            libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 libfreetype6 \
+            libdbus-1-3 libglib2.0-0t64 libpulse0 libasound2t64
+      - name: Python 3.11 (pila legacy)
+        if: matrix.stack == 'legacy'
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Pila legacy (torch 2.2.2, PySide6 6.4.3, numpy 1.x, demucs 4.0.1)
+        if: matrix.stack == 'legacy'
+        shell: bash
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade --quiet pip "setuptools>=77" wheel
+          # torch +cpu dall'indice di PyTorch: quello di PyPI per Linux e'
+          # la build CUDA (~2 GB) e il test non usa la GPU
+          .venv/bin/python -m pip install --only-binary :all: \
+            --no-binary antlr4-python3-runtime,demucs,dora-search \
+            --extra-index-url https://download.pytorch.org/whl/cpu \
+            -r .github/compat/legacy-requirements.txt
+          .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
+          echo "STEMFORGE_PY=$PWD/.venv/bin/python" >> "$GITHUB_ENV"
+      - name: Ambiente moderno dal lock
+        if: matrix.stack == 'modern'
+        uses: ./.github/actions/setup-stemforge
+        with:
+          python: ${{ matrix.python }}
+          lock: requirements-linux-x64.lock
+      - name: Versioni in prova
+        shell: bash
+        run: |
+          "$STEMFORGE_PY" -c "import torch, torchaudio, numpy, demucs; print('torch', torch.__version__, '| torchaudio', torchaudio.__version__, '| numpy', numpy.__version__, '| demucs', demucs.__version__)"
+      - name: pytest -m compat
+        shell: bash
+        run: '"$STEMFORGE_PY" -m pytest tests -q -m compat'
