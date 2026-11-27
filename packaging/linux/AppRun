@@ -1,0 +1,11 @@
+#!/bin/sh
+# Punto d'ingresso dell'AppImage: il runtime la monta (o la estrae con
+# --appimage-extract-and-run) e lancia questo file con APPDIR impostata.
+#
+# Nient'altro che un exec: le librerie le trova il bootloader di
+# PyInstaller (LD_LIBRARY_PATH sul proprio _internal/), e la piattaforma
+# Qt (wayland o xcb) la sceglie Qt dalla sessione. Forzarla qui
+# toglierebbe all'utente la possibilita' di cambiarla con QT_QPA_PLATFORM.
+set -eu
+HERE="${APPDIR:-$(dirname "$(readlink -f "$0")")}"
+exec "$HERE/usr/lib/stemforge/StemForge" "$@"
