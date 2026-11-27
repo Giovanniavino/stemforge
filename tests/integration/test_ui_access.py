@@ -18,6 +18,7 @@ from test_ui_support import (  # noqa: F401  (fixture)
     qapp,
     themed,
     visit_screens,
+    wait_for_probe,
     write_manifest,
 )
 
@@ -187,6 +188,7 @@ def test_outcomes_are_announced(qapp, language, announcements, tmp_path: Path):
     song = tmp_path / "brano.wav"
     song.touch()
     window._on_files([song])
+    wait_for_probe(window)
     window._current_job = SeparationJob(
         source=song, wanted=(StemKind.VOCALS,), quality="fast", out_dir=tmp_path,
     )

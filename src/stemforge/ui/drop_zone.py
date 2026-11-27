@@ -3,8 +3,9 @@ controlli discreti di lingua e diagnostica (§8.6, §9.9)."""
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, Signal
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QKeySequence
@@ -29,21 +30,36 @@ def _file_filter() -> str:
     return translate("DropZone", "Audio ({patterns})").format(patterns=patterns)
 
 
+def _files_under(folder: Path) -> Iterator[Path]:
+    """I file che rglob("*") troverebbe, letti dai DirEntry: niente stat per
+    file, che su una cartella da 1000 voci bloccava il drop per 250 ms."""
+    try:
+        with os.scandir(folder) as scan:
+            entries = list(scan)
+    except OSError:  # come rglob: una sottocartella illeggibile si salta
+        return
+    # le cartelle di output di StemForge non si ri-separano
+    is_output = (folder / "manifest.json").is_file()
+    for entry in entries:
+        if entry.is_dir() and not entry.is_symlink():
+            yield from _files_under(Path(entry.path))
+        elif not is_output and entry.is_file():
+            yield Path(entry.path)
+
+
 def _collect_audio_files(paths: list[Path]) -> tuple[list[Path], int]:
     """File audio validi (cartelle incluse, §8.1) e quanti scartati."""
     accepted: list[Path] = []
     rejected = 0
     for path in paths:
         if path.is_dir():
-            for child in sorted(path.rglob("*")):
-                # le cartelle di output di StemForge non si ri-separano
-                if (child.parent / "manifest.json").is_file():
-                    continue
-                if child.is_file():
-                    if is_supported(child):
-                        accepted.append(child)
-                    else:
-                        rejected += 1
+            # shortcut: sul thread dell'UI, oltre ~1000 voci passa i 50 ms;
+            # spostarla in un thread se si trascinano librerie intere
+            for child in sorted(_files_under(path)):
+                if is_supported(child):
+                    accepted.append(child)
+                else:
+                    rejected += 1
         elif is_supported(path):
             accepted.append(path)
         else:

@@ -15,10 +15,10 @@ import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-MARKERS = {"slow", "compat", "fuzz", "chaos", "soak", "frozen"}
+MARKERS = {"slow", "compat", "fuzz", "chaos", "soak", "frozen", "perf"}
 # compat resta nel giro normale: costa pochi secondi (un HTDemucs
 # minuscolo, niente pesi) e deve girare a ogni push (§10.6)
-EXCLUDED_BY_DEFAULT = {"slow", "fuzz", "chaos", "soak", "frozen"}
+EXCLUDED_BY_DEFAULT = {"slow", "fuzz", "chaos", "soak", "frozen", "perf"}
 PROFILES = ("legacy-intel", "mac-arm64", "win-x64", "linux-x64")
 _COLLECT_TIMEOUT_S = 120
 

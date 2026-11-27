@@ -117,5 +117,6 @@ markers = [
     "chaos: worker ucciso, disco pieno, rete che cade, file di stato corrotti; su richiesta",
     "soak: batch lunghi, brano di 29 minuti, memoria e processi monitorati; su richiesta",
     "frozen: la batteria contro l'app impacchettata (STEMFORGE_FROZEN_EXE); release",
+    "perf: reattivita' della UI end-to-end (job finto con QProcess vero); su richiesta",
 ]
-addopts = "--strict-markers -m 'not slow and not fuzz and not chaos and not soak and not frozen'"
+addopts = "--strict-markers -m 'not slow and not fuzz and not chaos and not soak and not frozen and not perf'"

@@ -20,6 +20,7 @@ from test_ui_support import (  # noqa: F401  (fixture)
     qapp,
     themed,
     visit_screens,
+    wait_for_probe,
 )
 
 from PySide6.QtCore import QPoint, QRect, Qt
@@ -63,7 +64,7 @@ def _song(tmp_path: Path) -> Path:
 
 def _to_picker(win, tmp_path: Path) -> None:
     win._on_files([_song(tmp_path)])
-    QApplication.processEvents()
+    wait_for_probe(win)
 
 
 # -- ordine di tabulazione ---------------------------------------------------
@@ -243,6 +244,7 @@ def test_open_shortcut_chooses_a_file_from_any_screen(window, chooser, tmp_path)
     # StandardKey.Open: Qt lo traduce in Cmd+O su macOS e Ctrl+O altrove
     _press(Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)
     assert chooser == ["Scegli un brano"]
+    wait_for_probe(window)
     assert window._stack.currentWidget() is window._picker
 
     from test_ui_support import write_manifest
@@ -251,6 +253,7 @@ def test_open_shortcut_chooses_a_file_from_any_screen(window, chooser, tmp_path)
     window._on_done(str(out), str(write_manifest(out)))
     _press(Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)
     assert len(chooser) == 2
+    wait_for_probe(window)
     assert window._stack.currentWidget() is window._picker
 
 

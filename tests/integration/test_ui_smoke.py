@@ -135,12 +135,15 @@ def test_unadopted_derived_options_are_hidden(qapp, tmp_path: Path):
 def test_open_with_routes_files_and_queues_during_jobs(qapp, tmp_path: Path):
     """"Apri con" (Finder / Esplora file): con l'app ferma il file arriva
     alla scelta strumenti; con un job in corso entra in coda."""
+    from test_ui_support import wait_for_probe
+
     from stemforge.ui.main_window import MainWindow
 
     song = tmp_path / "brano.wav"
     song.touch()
     window = MainWindow(out_dir=tmp_path)
     window.open_files([song, tmp_path / "note.txt"])
+    wait_for_probe(window)
     assert window._stack.currentWidget() is window._picker
 
     window._preparing = True  # finché si prepara, niente cambio schermata
