@@ -85,7 +85,7 @@ PYTEST := "$(VPY)" -m pytest tests -q
 # famiglie su richiesta ancora vuote: pytest esce con 5 (nessun test), non e' un errore
 NONE_OK := || [ $$? -eq 5 ]
 
-.PHONY: dev test test-slow test-compat test-fuzz test-chaos test-soak test-frozen lint check-workflows \
+.PHONY: dev test test-slow test-compat test-fuzz test-chaos test-soak test-perf test-frozen lint check-workflows \
 	lock lock-check ffmpeg build build-release check-min-os selftest package \
 	package-legacy-intel package-mac-arm64 package-win-x64 package-linux-x64 \
 	selftest-package selftest-package-legacy-intel selftest-package-mac-arm64 \
@@ -122,6 +122,9 @@ test-chaos:
 
 test-soak:
 	$(PYTEST) -m soak -s $(NONE_OK)
+
+test-perf:
+	$(PYTEST) -m perf -s
 
 test-frozen:
 	@test -e "$(FROZEN_EXE)" || { echo "app impacchettata assente: $(FROZEN_EXE) (make build, o FROZEN_EXE=...)" >&2; exit 1; }

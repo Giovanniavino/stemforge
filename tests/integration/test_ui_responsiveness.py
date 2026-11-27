@@ -55,7 +55,7 @@ class Sentinel:
         now = self._clock.elapsed()
         gap = now - self._last - self.INTERVAL_MS
         if gap > BLOCK_MS:
-            self.blocks.append((self.label, gap, now))
+            self.blocks.append((self.label, gap))
         self._last = now
 
     def act(self, label: str, action) -> None:
@@ -158,6 +158,7 @@ def test_drop_does_not_wait_for_the_probe(qapp, tmp_path: Path, slow_probe):
     window.close()
 
 
+@pytest.mark.perf  # ~7 s: il worker finto importa torch nel processo figlio
 def test_main_thread_never_blocks(qapp, tmp_path: Path, mix_44k: Path, slow_probe,
                                   monkeypatch: pytest.MonkeyPatch):
     """Drop, scelta, job (QProcess vero, worker finto), risultato: nessun
@@ -174,15 +175,6 @@ def test_main_thread_never_blocks(qapp, tmp_path: Path, mix_44k: Path, slow_prob
     window = make_window(qapp, tmp_path)
     picker = window._picker
     sentinel = Sentinel()
-    ev = []
-    import gc
-    gc.callbacks.append(lambda ph, info: ev.append(("gc", ph, info["generation"], sentinel._clock.elapsed())))
-    for name in ("started", "phase", "progress", "done"):
-        getattr(window._bridge, name).connect(lambda *a, n=name: ev.append((n, sentinel._clock.elapsed())))
-    orig = window._result.show_result
-    def timed_show(*a):
-        ev.append(("show>", sentinel._clock.elapsed())); orig(*a); ev.append(("show<", sentinel._clock.elapsed()))
-    window._result.show_result = timed_show
 
     sentinel.act("drop cartella", lambda: _drop(window, [folder]))
     wait_for_probe(window)
@@ -206,7 +198,5 @@ def test_main_thread_never_blocks(qapp, tmp_path: Path, mix_44k: Path, slow_prob
 
     print("\nblocchi del thread principale oltre 50 ms:", sentinel.blocks or "nessuno")
     assert window._result.list.count() == 1  # il job è arrivato davvero alla fine
-    print([e for e in ev if e[0] not in ("progress",)])
-    print([e[1] for e in ev if e[0] == "progress"])
-    slow = [(label, ms) for label, ms, _ in sentinel.blocks if ms > BUDGET_MS]
+    slow = [(label, ms) for label, ms in sentinel.blocks if ms > BUDGET_MS]
     assert not slow, f"thread principale fermo oltre {BUDGET_MS} ms: {slow}"

@@ -244,6 +244,7 @@ def test_open_shortcut_chooses_a_file_from_any_screen(window, chooser, tmp_path)
     # StandardKey.Open: Qt lo traduce in Cmd+O su macOS e Ctrl+O altrove
     _press(Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)
     assert chooser == ["Scegli un brano"]
+    wait_for_probe(window)
     assert window._stack.currentWidget() is window._picker
 
     from test_ui_support import write_manifest
@@ -252,6 +253,7 @@ def test_open_shortcut_chooses_a_file_from_any_screen(window, chooser, tmp_path)
     window._on_done(str(out), str(write_manifest(out)))
     _press(Qt.Key.Key_O, Qt.KeyboardModifier.ControlModifier)
     assert len(chooser) == 2
+    wait_for_probe(window)
     assert window._stack.currentWidget() is window._picker
 
 
