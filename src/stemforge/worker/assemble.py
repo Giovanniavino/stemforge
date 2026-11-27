@@ -102,11 +102,13 @@ def assemble_outputs(
         out[kind] = to_original(stems[kind], source)
     if StemKind.INSTRUMENTAL in write or StemKind.OTHER in write:
         # la sottrazione usa la voce del 1° stadio (wet), §5.2.3
-        vocals_stage1 = (
-            to_original(stage1[StemKind.VOCALS], source)
-            if StemKind.VOCALS in stage1
-            else None
-        )
+        vocals = stage1.get(StemKind.VOCALS)
+        if vocals is None:
+            vocals_stage1 = None
+        elif StemKind.VOCALS in out and stems.get(StemKind.VOCALS) is vocals:
+            vocals_stage1 = out[StemKind.VOCALS]  # già riportata: un resampling in meno
+        else:
+            vocals_stage1 = to_original(vocals, source)
         _residuals(write, mix, out, stems, vocals_stage1, source)
     return out
 
