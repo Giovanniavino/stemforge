@@ -12,7 +12,9 @@ BUILD_SPEC §7.3, §5.7. Regole incorporate:
 
 from __future__ import annotations
 
+import errno
 import math
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -55,6 +57,24 @@ def allocate_out_dir(base: Path, source_name: str) -> Path:
     return candidate
 
 
+def _raise_if_disk_full(out_dir: Path, audio: np.ndarray, exc: Exception) -> None:
+    """libsndfile non dice "disco pieno": dice "errore di scrittura".
+
+    Se dopo il guasto sul volume non c'è più posto per lo stem, la causa
+    è quella, e diventa un OSError(ENOSPC) che il worker traduce in un
+    messaggio che dice cosa fare (§10.1). Qui non si importa engine (§3).
+    """
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        return  # già nella forma giusta: lo rilancia il chiamante
+    stem_bytes = audio.shape[-1] * audio.shape[0] * (BIT_DEPTH // 8)
+    try:
+        free = shutil.disk_usage(out_dir).free
+    except OSError:
+        return  # il volume è sparito: non è un disco pieno
+    if free < stem_bytes:
+        raise OSError(errno.ENOSPC, f"disco pieno scrivendo in {out_dir}: {exc}") from exc
+
+
 @dataclass(frozen=True)
 class WrittenStem:
     kind: StemKind
@@ -75,8 +95,12 @@ def write_stem(
     name = filename if filename is not None else f"{kind.value}.{fmt}"
     path = out_dir / name
     subtype = "PCM_24"
-    # soundfile vuole [samples, channels]
-    sf.write(path, audio.T, samplerate, subtype=subtype, format=fmt.upper())
+    try:
+        # soundfile vuole [samples, channels]
+        sf.write(path, audio.T, samplerate, subtype=subtype, format=fmt.upper())
+    except (RuntimeError, OSError) as exc:
+        _raise_if_disk_full(out_dir, audio, exc)
+        raise
     peak = peak_dbfs(audio)
     return WrittenStem(
         kind=kind,

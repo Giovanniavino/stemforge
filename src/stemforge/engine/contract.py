@@ -55,7 +55,7 @@ class Backend(Protocol):
 class Quality:
     overlap: float
     shifts: int
-    half: bool  # solo CUDA; su CPU sempre False (§5.6)
+    half: bool  # solo CUDA; su CPU e MPS sempre False (§5.6)
     segment_s: float | None
 
 
@@ -72,9 +72,14 @@ DEFAULT_QUALITY = "best"
 
 
 def effective_quality(preset: str, device: str) -> Quality:
-    """Preset adattato al device: fp16 su CPU è emulato e più lento (§5.6)."""
+    """Preset adattato al device (§5.6): fp16 solo su CUDA.
+
+    Su CPU è emulato e più lento; su MPS si resta in fp32 perché la
+    validazione di D8 confronta fp32 con fp32, e un fp16 mai validato
+    rimetterebbe in gioco la qualità.
+    """
     quality = PRESETS[preset]
-    if device == "cpu" and quality.half:
+    if device != "cuda" and quality.half:
         return Quality(
             overlap=quality.overlap,
             shifts=quality.shifts,
