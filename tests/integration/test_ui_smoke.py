@@ -23,7 +23,18 @@ def qapp():
     yield app
 
 
-def test_picker_estimate_scales_and_dependencies(qapp, tmp_path: Path):
+@pytest.fixture()
+def italian(qapp):
+    """L'utente è italiano: questi test leggono i testi come li vede lui.
+    La lingua sorgente nel codice è l'inglese (ui/i18n.py)."""
+    from stemforge.ui import i18n
+
+    assert i18n.apply_language("it"), "manca resources/i18n/stemforge_it.qm"
+    yield
+    i18n.apply_language(i18n.SOURCE_LANGUAGE)
+
+
+def test_picker_estimate_scales_and_dependencies(qapp, italian, tmp_path: Path):
     from stemforge.ui.stem_picker import StemPicker
 
     picker = StemPicker(out_dir=tmp_path)
@@ -127,7 +138,7 @@ def test_open_with_routes_files_and_queues_during_jobs(qapp, tmp_path: Path):
     assert window._stack.currentWidget() is window._picker
 
 
-def test_bridge_does_not_overwrite_real_error(qapp):
+def test_bridge_does_not_overwrite_real_error(qapp, italian):
     """Regressione dal campo: l'Error del worker seguito da exit 1 non
     deve produrre un secondo `failed` generico che sovrascrive il vero
     motivo nell'UI."""
@@ -163,6 +174,8 @@ def test_result_view_lists_manifest(qapp, tmp_path: Path, mix_44k, fake_backends
     result = run_job(job, emit=lambda m: None, backends=cache)
     view = ResultView()
     view.show_result(result.out_dir, result.out_dir / "manifest.json", warnings=[])
+    from PySide6.QtCore import Qt
+
     assert view.list.count() == 2
-    first_path = view.list.item(0).data(view.list.item(0).UserRole if False else 0x0100)
+    first_path = view.list.item(0).data(Qt.ItemDataRole.UserRole)
     assert Path(first_path).exists()
