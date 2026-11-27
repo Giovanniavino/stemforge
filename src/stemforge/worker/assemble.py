@@ -93,23 +93,27 @@ def assemble_outputs(
     stems: dict[StemKind, np.ndarray],
 ) -> dict[StemKind, np.ndarray]:
     """Porta gli stem al sample rate/canali originali e calcola i
-    residui per sottrazione dal mix originale (esatti per costruzione)."""
+    residui per sottrazione dal mix originale (esatti per costruzione).
+
+    SVUOTA `stage1` e `stems`: ogni stem a 44.1 kHz si libera appena
+    convertito, perché qui sta il picco di RAM dei brani lunghi (§6.1)."""
     mix = audio_io.to_original_channels(source.data, source.original_channels)
+    # la sottrazione usa la voce del 1° stadio (wet), §5.2.3
+    vocals = stage1.get(StemKind.VOCALS)
+    same_vocals = vocals is not None and stems.get(StemKind.VOCALS) is vocals
+    stage1.clear()
+    for kind in [k for k in stems if k not in write]:
+        del stems[kind]  # mai scritti (es. `best` calcola tutte le sorgenti)
     out: dict[StemKind, np.ndarray] = {}
     for kind in write:
-        if kind in (StemKind.OTHER, StemKind.INSTRUMENTAL):
-            continue
-        out[kind] = to_original(stems[kind], source)
+        if kind not in (StemKind.OTHER, StemKind.INSTRUMENTAL):
+            out[kind] = to_original(stems.pop(kind), source)
     if StemKind.INSTRUMENTAL in write or StemKind.OTHER in write:
-        # la sottrazione usa la voce del 1° stadio (wet), §5.2.3
-        vocals = stage1.get(StemKind.VOCALS)
-        if vocals is None:
-            vocals_stage1 = None
-        elif StemKind.VOCALS in out and stems.get(StemKind.VOCALS) is vocals:
-            vocals_stage1 = out[StemKind.VOCALS]  # già riportata: un resampling in meno
-        else:
-            vocals_stage1 = to_original(vocals, source)
-        _residuals(write, mix, out, stems, vocals_stage1, source)
+        if same_vocals and StemKind.VOCALS in out:
+            vocals = out[StemKind.VOCALS]  # già riportata: un resampling in meno
+        elif vocals is not None:
+            vocals = to_original(vocals, source)
+        _residuals(write, mix, out, stems, vocals, source)
     return out
 
 
