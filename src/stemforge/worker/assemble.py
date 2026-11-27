@@ -95,7 +95,7 @@ def assemble_outputs(
     """Porta gli stem al sample rate/canali originali e calcola i
     residui per sottrazione dal mix originale (esatti per costruzione).
 
-    SVUOTA `stage1` e `stems`: ogni stem a 44.1 kHz si libera appena
+    SVUOTA `stage1` e `stems` (resta solo `other`, se va scritto): ogni stem a 44.1 kHz si libera appena
     convertito, perché qui sta il picco di RAM dei brani lunghi (§6.1)."""
     mix = audio_io.to_original_channels(source.data, source.original_channels)
     # la sottrazione usa la voce del 1° stadio (wet), §5.2.3
