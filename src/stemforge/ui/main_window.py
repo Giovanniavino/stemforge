@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import QCoreApplication, QEvent
+from PySide6.QtCore import QCoreApplication, QEvent, Signal
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMainWindow, QStackedWidget, QWidget
 
@@ -32,12 +33,15 @@ _DEFAULT_SIZE = (760, 620)
 
 
 class MainWindow(QMainWindow):
+    _probed = Signal(object, object)  # sorgente, durata o None (dal thread del probe)
+
     def __init__(self, out_dir: Path, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWindowTitle("StemForge")
         self.resize(*_DEFAULT_SIZE)
 
         self._queue: list[Path] = []
+        self._probing: Path | None = None
         self._current_job: SeparationJob | None = None
         self._failures: list[str] = []
         self._warnings: list[str] = []
@@ -64,6 +68,7 @@ class MainWindow(QMainWindow):
 
     def _wire(self) -> None:
         self._drop.files_chosen.connect(self._on_files)
+        self._probed.connect(self._on_probed)
         self._picker.start_requested.connect(self._on_start)
         self._picker.back_requested.connect(self._show_drop)
         self._progress.cancel_button.clicked.connect(self._bridge.cancel)
@@ -191,7 +196,19 @@ class MainWindow(QMainWindow):
         self._queue = list(paths)
         self._failures = []
         first = self._queue.pop(0)
-        self._picker.set_source(first, planning.probe_duration(first))
+        self._probing = first
+        # per m4a/aac il probe è un processo FFmpeg: sul thread dell'UI la
+        # fermava ~170 ms a ogni drop (fino a 30 s con un file che lo blocca)
+        threading.Thread(
+            target=lambda: self._probed.emit(first, planning.probe_duration(first)),
+            daemon=True,
+        ).start()
+
+    def _on_probed(self, source: Path, duration: float | None) -> None:
+        if source != self._probing:
+            return  # nel frattempo è arrivato un altro file: vale l'ultimo
+        self._probing = None
+        self._picker.set_source(source, duration)
         self._show_picker()
 
     def _on_start(self, job: SeparationJob) -> None:

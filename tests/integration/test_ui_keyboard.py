@@ -20,6 +20,7 @@ from test_ui_support import (  # noqa: F401  (fixture)
     qapp,
     themed,
     visit_screens,
+    wait_for_probe,
 )
 
 from PySide6.QtCore import QPoint, QRect, Qt
@@ -63,7 +64,7 @@ def _song(tmp_path: Path) -> Path:
 
 def _to_picker(win, tmp_path: Path) -> None:
     win._on_files([_song(tmp_path)])
-    QApplication.processEvents()
+    wait_for_probe(win)
 
 
 # -- ordine di tabulazione ---------------------------------------------------

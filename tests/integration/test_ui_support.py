@@ -122,6 +122,17 @@ def make_window(qapp, tmp_path: Path):
     return window
 
 
+def wait_for_probe(window, timeout_s: float = 10.0) -> None:
+    """Dopo un drop la durata si legge in un thread (O4): il picker arriva
+    quando il risultato torna nel thread dell'interfaccia."""
+    from PySide6.QtTest import QTest
+
+    deadline = time.monotonic() + timeout_s
+    while window._probing is not None:
+        assert time.monotonic() < deadline, "la durata del file non è mai arrivata"
+        QTest.qWait(5)
+
+
 def visit_screens(window, qapp, tmp_path: Path) -> Iterator[tuple[str, QWidget]]:
     """Ogni schermata, piena, mentre è quella visibile."""
     window._drop._accept([tmp_path / "note.txt"])  # rifiuto inline
@@ -133,6 +144,7 @@ def visit_screens(window, qapp, tmp_path: Path) -> Iterator[tuple[str, QWidget]]
     song = tmp_path / "brano.wav"
     song.touch()
     window._on_files([song])
+    wait_for_probe(window)
     for group in (window._picker._drum_group, window._picker._vocal_group):
         group._toggle.setChecked(True)
     qapp.processEvents()
