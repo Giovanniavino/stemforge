@@ -60,6 +60,9 @@ def output_bytes(sources: int, channels: int, frames: int) -> int:
 
 def memory_for_blocks(available_bytes: int | None, full_length_bytes: int) -> int | None:
     """RAM che resta ai blocchi dopo gli stem a lunghezza piena; None se ignota."""
+    # shortcut: gli stem pieni restano in RAM, quindi sotto ~3.3 GB liberi un job di
+    # 20 min a 4 stem supera la RAM anche coi blocchi minimi; scriverli su disco a
+    # blocchi se il Mac da 4 GB va in swap (manual_checklist dell'area E).
     if available_bytes is None:
         return None
     return max(0, available_bytes - full_length_bytes)

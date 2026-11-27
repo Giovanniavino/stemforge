@@ -142,6 +142,15 @@ def test_a_4gb_machine_splits_even_a_short_song():
     assert parts[0].start == 0 and parts[-1].end == song
 
 
+def test_full_length_stems_come_first_on_a_4gb_mac():
+    # Mac da 4 GB con 2.5 GB liberi: ~45 s di blocco a RAM nuda, ma in un
+    # job vero di 20 min a 4 stem gli stem pieni (1.69 GB) lasciano il minimo
+    available = int(2.5 * GB)
+    assert 45 < blocks.block_length_s(available) < 46
+    stems = blocks.output_bytes(4, 2, SR * 20 * 60)
+    assert blocks.block_length_s(blocks.memory_for_blocks(available, stems)) == blocks.MIN_BLOCK_S
+
+
 def test_plenty_of_ram_keeps_a_short_song_in_one_pass():
     assert len(blocks.split_blocks(SR * 6 * 60, SR, 32 * GB)) == 1
 
