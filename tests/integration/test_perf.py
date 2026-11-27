@@ -37,9 +37,12 @@ def test_single_stem_scales(monkeypatch, capsys):
     backend = Demucs4Backend("htdemucs_ft", "cpu", quality)
     audio = torch.from_numpy(synth_mix(44100, seconds=30.0))
 
-    _run(backend, audio, {K.VOCALS})  # warm-up: cache, allocazioni
+    every = {K.VOCALS, K.DRUMS, K.BASS, K.OTHER}
+    # warm-up: cache, allocazioni e i quattro sotto-modelli, che si caricano
+    # al primo uso; `one` dopo `four` scarica soltanto, niente pesi nel tempo
+    _run(backend, audio, every)
+    four = _run(backend, audio, every)
     one = _run(backend, audio, {K.VOCALS})
-    four = _run(backend, audio, {K.VOCALS, K.DRUMS, K.BASS, K.OTHER})
     ratio = one / four
     with capsys.disabled():
         print(

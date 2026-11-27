@@ -55,20 +55,32 @@ def _tiny_htdemucs():
     ).eval()
 
 
-def _tiny_bag():
-    """Bag one-hot come htdemucs_ft: il secondo modello fa solo la voce."""
-    from demucs.apply import BagOfModels
-
-    torch.manual_seed(_SEED)
-    first, second = _tiny_htdemucs(), _tiny_htdemucs()
-    return BagOfModels(
-        [first, second], weights=[[1, 1, 1, 0], [0, 0, 0, 1]], segment=_SEGMENT_S,
-    )
+_TINY_RECIPE = {
+    # bag one-hot come htdemucs_ft: il secondo modello fa solo la voce
+    "models": ["primo", "secondo"],
+    "weights": [[1, 1, 1, 0], [0, 0, 0, 1]],
+    "segment": _SEGMENT_S,
+}
 
 
 @pytest.fixture()
-def backend(monkeypatch):
-    monkeypatch.setattr(demucs4, "_load_model", lambda name: _tiny_bag())
+def loads(monkeypatch):
+    """Firme caricate, in ordine: i sotto-modelli si caricano su richiesta."""
+    torch.manual_seed(_SEED)
+    tiny = {sig: _tiny_htdemucs() for sig in _TINY_RECIPE["models"]}
+    calls: list[str] = []
+
+    def load(sig):
+        calls.append(sig)
+        return tiny[sig]
+
+    monkeypatch.setattr(demucs4, "_bag_recipe", lambda name: _TINY_RECIPE)
+    monkeypatch.setattr(demucs4, "_load_model", load)
+    return calls
+
+
+@pytest.fixture()
+def backend(loads):
     torch.set_num_threads(1)  # tempi stabili su una macchina condivisa
     return demucs4.Demucs4Backend("htdemucs_ft", "cpu", effective_quality("fast", "cpu"))
 
@@ -105,6 +117,25 @@ def test_partial_bag_equals_full_bag(backend):
     np.testing.assert_allclose(
         partial[K.VOCALS].numpy(), full[K.VOCALS].numpy(), rtol=0, atol=1e-5,
     )
+
+
+def test_only_needed_submodels_stay_in_ram(backend, loads, monkeypatch):
+    """§6.1 punto 3: chi non serve esce dalla RAM prima che entri chi serve."""
+    assert loads == ["primo"]  # le sorgenti si leggono dal primo
+    resident_at_load: list[set[int]] = []
+    load = demucs4._load_model
+
+    def spy(sig):
+        resident_at_load.append(set(backend._loaded))
+        return load(sig)
+
+    monkeypatch.setattr(demucs4, "_load_model", spy)
+    vocals = frozenset({K.VOCALS})
+    backend.separate(_audio(), vocals, lambda p: None, lambda: False)
+    assert resident_at_load == [set()], "il picco somma un sotto-modello inutile"
+    assert set(backend._loaded) == {1}
+    backend.separate(_audio(), vocals, lambda p: None, lambda: False)
+    assert loads == ["primo", "secondo"], "un sotto-modello ricaricato nello stesso batch"
 
 
 def test_cancel_between_segments(backend):
