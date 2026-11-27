@@ -195,3 +195,36 @@ def test_failed_job_removes_its_out_dir(mix_44k, tmp_path, fake_backends):
     else:
         raise AssertionError("il job doveva fallire")
     assert list(out.iterdir()) == []
+
+
+def test_48k_stage1_vocals_resampled_once(mix_48k, tmp_path, fake_backends, monkeypatch):
+    # la voce del 1° stadio serve sia come stem sia per `other`: un solo ritorno a 48 kHz
+    from stemforge.engine import audio_io
+
+    calls: list[int] = []
+    real = audio_io.resample
+
+    def counting(audio, sr_from, sr_to):
+        calls.append(sr_to)
+        return real(audio, sr_from, sr_to)
+
+    monkeypatch.setattr(audio_io, "resample", counting)
+    cache, _fake = fake_backends()
+    run_job(make_job(mix_48k, tmp_path / "out", K.VOCALS, K.DRUMS, K.BASS, K.OTHER),
+            emit=lambda m: None, backends=cache)
+    assert calls.count(48000) == 3  # vocals, drums, bass; other è per sottrazione
+
+
+def test_dereverb_other_subtracts_wet_vocals(mix_48k, tmp_path, fake_backends):
+    # con de-riverbero `other` sottrae la voce WET, non quella asciutta (§5.2.3)
+    from tests.integration.test_engine_disk import FakeDereverb
+
+    cache, _fake = fake_backends()
+    cache[("dereverb", "dereverb", "cpu", "balanced")] = FakeDereverb()
+    result = run_job(make_job(mix_48k, tmp_path / "out", K.VOCALS, K.OTHER, dereverb=True),
+                     emit=lambda m: None, backends=cache)
+    mix, _sr = sf.read(mix_48k, dtype="float64", always_2d=True)
+    wet, _sr = sf.read(result.out_dir / "vocals_wet.wav", dtype="float64", always_2d=True)
+    other, _sr = sf.read(result.out_dir / "other.wav", dtype="float64", always_2d=True)
+    rms = float(np.sqrt(np.mean(np.square(wet + other - mix))))
+    assert rms < 10 ** (RECONSTRUCTION_LIMIT_DBFS / 20)
