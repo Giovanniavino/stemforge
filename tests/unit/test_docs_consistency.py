@@ -62,6 +62,17 @@ def version_numbers(cell: str) -> set[str]:
     return set(re.findall(r"\d+(?:\.\d+)*", cell))
 
 
+def version_patterns(cell: str) -> dict[str, re.Pattern[str]]:
+    """Ogni versione col nome che la precede ('macOS 11', 'Debian 11'):
+    un '11' nudo si troverebbe anche dentro 'Windows 11'."""
+    found: dict[str, re.Pattern[str]] = {}
+    for name, number in re.findall(r"(?:([A-Za-z]+)\s+(?:≥\s*)?)?(\d+(?:\.\d+)*)", cell):
+        bare = rf"(?<![\d.]){re.escape(number)}(?![\d]|\.\d)"
+        label = f"{name} {number}" if name else number
+        found[label] = re.compile(rf"{name}\s+(?:≥\s*)?{bare}" if name else bare)
+    return found
+
+
 def paragraphs(text: str) -> list[str]:
     return [block for block in re.split(r"\n\s*\n", text) if block.strip()]
 
@@ -82,14 +93,20 @@ def test_spec_matrix_is_parsed():
     assert "2.28" in version_numbers(minimums["linux-x64"])
 
 
+def test_minimum_check_wants_the_system_name():
+    patterns = version_patterns("macOS 11, Apple Silicon")
+    assert not patterns["macOS 11"].search("Windows 11, Debian 11, macOS 12")
+    assert patterns["macOS 11"].search("macOS 11 Big Sur")
+
+
 def test_install_docs_state_every_minimum_of_the_spec():
     minimums = spec_minimum_systems(_read("BUILD_SPEC.md"))
     missing = [
         f"{doc}: {profile} {number}"
         for doc in INSTALL_DOCS
         for profile, cell in minimums.items()
-        for number in sorted(version_numbers(cell))
-        if number not in _read(doc)
+        for number, pattern in sorted(version_patterns(cell).items())
+        if not pattern.search(_read(doc))
     ]
     assert not missing, "minimi di sistema di §2.1 assenti:\n  " + "\n  ".join(missing)
 
