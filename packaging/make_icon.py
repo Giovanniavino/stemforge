@@ -14,6 +14,9 @@ import math
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import QPointF, QRectF, Qt
+from PySide6.QtGui import QColor, QGuiApplication, QImage, QLinearGradient, QPainter, QPainterPath, QPen
+
 SIZE = 1024
 OUT = Path(__file__).resolve().parent / "icon.png"
 STEM_COLORS = ("#ff5c7a", "#ffb547", "#4fd18b", "#4cb3ff", "#a98bff")
@@ -27,16 +30,7 @@ def _wave(x: float, phase: float) -> float:
     )
 
 
-def main() -> int:
-    from PySide6.QtCore import QPointF, QRectF, Qt
-    from PySide6.QtGui import QColor, QGuiApplication, QImage, QLinearGradient, QPainter, QPainterPath, QPen
-
-    _app = QGuiApplication(sys.argv[:1])
-    image = QImage(SIZE, SIZE, QImage.Format.Format_ARGB32)
-    image.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(image)
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
+def _paint_tile(painter: QPainter) -> QRectF:
     # sfondo: la griglia delle icone macOS lascia ~10% di margine
     margin = SIZE * 0.09
     tile = QRectF(margin, margin, SIZE - 2 * margin, SIZE - 2 * margin)
@@ -46,6 +40,34 @@ def main() -> int:
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(background)
     painter.drawRoundedRect(tile, tile.width() * 0.225, tile.width() * 0.225)
+    return tile
+
+
+def _stem_path(
+    index: int, split_x: float, right: float, center_y: float, mix_amp: float, tile_h: float, steps: int
+) -> QPainterPath:
+    """Uno stem: nasce dalla fine del mix e si apre a ventaglio con un'onda piu' calma."""
+    offset = (index - 2) / 2.0
+    spread = tile_h * 0.5
+    path = QPainterPath()
+    path.moveTo(QPointF(split_x, center_y + _wave(split_x, 0.0) * mix_amp))
+    for i in range(1, steps + 1):
+        t = i / steps
+        x = split_x + (right - split_x) * t
+        ease = t * t * (3 - 2 * t)
+        lane = center_y + offset * spread * 0.5 * ease
+        amp = mix_amp * (1 - ease) + tile_h * 0.03 * ease
+        path.lineTo(QPointF(x, lane + _wave(x, index * 1.3 * ease) * amp))
+    return path
+
+
+def main() -> int:
+    _app = QGuiApplication(sys.argv[:1])
+    image = QImage(SIZE, SIZE, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    tile = _paint_tile(painter)
 
     left = tile.left() + tile.width() * 0.12
     split_x = tile.left() + tile.width() * 0.42
@@ -64,21 +86,9 @@ def main() -> int:
     round_pen = (Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin)
     painter.setBrush(Qt.BrushStyle.NoBrush)
 
-    # gli stem: cinque linee che nascono dalla fine del mix e si aprono a
-    # ventaglio, ognuna con la sua onda più calma (disegnate prima del mix,
-    # così il punto di separazione resta pulito)
-    spread = tile.height() * 0.5
+    # gli stem prima del mix, cosi' il punto di separazione resta pulito
     for index, color in enumerate(STEM_COLORS):
-        offset = (index - 2) / 2.0
-        path = QPainterPath()
-        path.moveTo(QPointF(split_x, center_y + _wave(split_x, 0.0) * mix_amp))
-        for i in range(1, steps + 1):
-            t = i / steps
-            x = split_x + (right - split_x) * t
-            ease = t * t * (3 - 2 * t)
-            lane = center_y + offset * spread * 0.5 * ease
-            amp = mix_amp * (1 - ease) + tile.height() * 0.03 * ease
-            path.lineTo(QPointF(x, lane + _wave(x, index * 1.3 * ease) * amp))
+        path = _stem_path(index, split_x, right, center_y, mix_amp, tile.height(), steps)
         painter.setPen(QPen(QColor(color), SIZE * 0.024, *round_pen))
         painter.drawPath(path)
 

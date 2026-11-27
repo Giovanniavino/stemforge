@@ -89,16 +89,8 @@ def _ui_check() -> str:
 def _selftest(args: list[str]) -> int:
     from stemforge.worker import selftest
 
-    report: Path | None = None
-    if "--report" in args:
-        index = args.index("--report")
-        if index + 1 < len(args):
-            report = Path(args[index + 1])
-    return selftest.run(
-        report,
-        network="--offline" not in args,
-        extra=[("interfaccia", _ui_check)],
-    )
+    report, network = selftest.parse_args(args)
+    return selftest.run(report, network=network, extra=[("interfaccia", _ui_check)])
 
 
 # -- app --------------------------------------------------------------------
