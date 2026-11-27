@@ -125,12 +125,15 @@ def make_window(qapp, tmp_path: Path):
 def wait_for_probe(window, timeout_s: float = 10.0) -> None:
     """Dopo un drop la durata si legge in un thread (O4): il picker arriva
     quando il risultato torna nel thread dell'interfaccia."""
-    from PySide6.QtTest import QTest
+    from PySide6.QtCore import QCoreApplication
 
     deadline = time.monotonic() + timeout_s
     while window._probing is not None:
         assert time.monotonic() < deadline, "la durata del file non è mai arrivata"
-        QTest.qWait(5)
+        QCoreApplication.processEvents()
+        # non QTest.qWait: su PySide6 6.7 tiene il GIL e il thread del probe,
+        # che al primo drop importa decode/numpy, ci mette ~35 s invece di 1
+        time.sleep(0.005)
 
 
 def visit_screens(window, qapp, tmp_path: Path) -> Iterator[tuple[str, QWidget]]:
