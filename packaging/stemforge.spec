@@ -59,7 +59,7 @@ _TRUTHY = ("1", "true", "yes")
 # "Apri con" dal Finder: le stesse estensioni che il motore sa leggere
 # (soundfile + FFmpeg); un test controlla che non ne manchi nessuna
 AUDIO_EXTENSIONS = ["wav", "wave", "flac", "ogg", "oga", "mp3",
-                    "aiff", "aif", "aifc", "m4a", "aac"]
+                    "aiff", "aif", "aifc", "m4a", "aac", "m4p"]
 # accanto al FFmpeg: la licenza LGPL e il link al sorgente prodotti dalla
 # sua build (packaging/ffmpeg/), che devono viaggiare con il binario
 FFMPEG_NOTICES = ("COPYING*", "LICENSE*", "*.txt", "*.md")

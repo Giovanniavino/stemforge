@@ -9,6 +9,7 @@ girano con entrambe le versioni e provano il ramo che ciascuna usa.
 from __future__ import annotations
 
 import sys
+import types
 
 import pytest
 from test_ui_support import qapp, themed  # noqa: F401  (fixture)
@@ -56,7 +57,7 @@ def test_windows_registry_is_read_like_the_system_does():
 
 
 def test_windows_registry_ignored_elsewhere(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(theme, "sys", types.SimpleNamespace(platform="darwin"))
     assert theme.windows_apps_dark() is None
 
 

@@ -26,6 +26,7 @@ import ctypes.util
 import json
 import logging
 import os
+import platform
 import sys
 from pathlib import Path
 from typing import Callable, Mapping
@@ -258,3 +259,16 @@ def available_memory_bytes(
         log.warning("RAM disponibile non leggibile su %s: %r", platform, exc)
         return None
     return value if value is not None and value > 0 else None
+
+
+def platform_info() -> dict[str, str]:
+    """Sistema e architettura per il report diagnostico (le API di
+    piattaforma stanno qui, §10.4)."""
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "system": platform.system(),
+        "release": platform.release(),
+        "macos": platform.mac_ver()[0],
+        "machine": platform.machine(),
+    }

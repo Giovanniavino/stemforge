@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import platform
 import subprocess
 import sys
 import tempfile
@@ -77,12 +76,7 @@ def system_info(now: datetime) -> dict[str, object]:
     return {
         "stemforge": __version__,
         "created": now.isoformat(timespec="seconds"),
-        "python": platform.python_version(),
-        "platform": platform.platform(),
-        "system": platform.system(),
-        "release": platform.release(),
-        "macos": platform.mac_ver()[0],
-        "machine": platform.machine(),
+        **device.platform_info(),
         "cpu_count": os.cpu_count(),
         "available_memory_bytes": device.available_memory_bytes(),
         "frozen": bool(getattr(sys, "frozen", False)),

@@ -65,7 +65,8 @@ def test_reveal_highlights_the_selected_stem(qapp, tmp_path, monkeypatch, platfo
     out = tmp_path / "out" / "brano"
     view.show_result(out, write_manifest(out), [])
     view.list.setCurrentRow(1)
-    monkeypatch.setattr(sys, "platform", platform)
+    # solo il modulo sotto test vede l'altro sistema, non tutta la suite
+    monkeypatch.setattr(result_view, "sys", types.SimpleNamespace(platform=platform))
     view._reveal()
     monkeypatch.undo()
     assert launched == [command + [str(out / "drums.wav")]]

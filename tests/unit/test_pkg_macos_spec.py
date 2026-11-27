@@ -11,6 +11,7 @@ né che l'app parta (serve il Mac).
 from __future__ import annotations
 
 import ast
+import builtins
 import importlib.util
 import platform
 import re
@@ -88,7 +89,6 @@ def run_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, system: str, machi
     _fake_pyinstaller(monkeypatch)
     spec_dir = _layout(tmp_path / "repo", ffmpeg_for, with_qm, ffmpeg_notices)
     monkeypatch.setattr(sys, "path", list(sys.path))
-    monkeypatch.setattr(sys, "platform", system)
     monkeypatch.setattr(platform, "machine", lambda: machine)
     made: dict[str, _Recorder] = {}
 
@@ -98,7 +98,14 @@ def run_spec(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, system: str, machi
             return made[kind]
         return build
 
+    # lo spec vede un altro sistema solo nel suo `import sys`, non tutta la suite
+    fake_sys = types.SimpleNamespace(**{**vars(sys), "platform": system})
+
+    def spec_import(name, *args, **kwargs):
+        return fake_sys if name == "sys" else builtins.__import__(name, *args, **kwargs)
+
     namespace = {"SPECPATH": str(spec_dir), "workpath": str(tmp_path / "build"),
+                 "__builtins__": {**vars(builtins), "__import__": spec_import},
                  **{kind: factory(kind) for kind in ("Analysis", "PYZ", "EXE", "COLLECT", "BUNDLE")}}
     source = (spec_dir / "stemforge.spec").read_text(encoding="utf-8")
     exec(compile(source, str(spec_dir / "stemforge.spec"), "exec"), namespace)

@@ -25,7 +25,8 @@ from pathlib import Path
 APP_EXE = "StemForge.exe"
 APP_ID = "{6B7C2E1F-4A3D-4F8B-9C21-5E0D7A9B3F42}"
 PROG_ID = "StemForge.AudioFile"
-EXTENSIONS = (".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aiff", ".aif")
+EXTENSIONS = (".wav", ".wave", ".mp3", ".flac", ".ogg", ".oga", ".m4a", ".aac", ".m4p",
+              ".aiff", ".aif", ".aifc")
 UNINSTALL_KEY = rf"Software\Microsoft\Windows\CurrentVersion\Uninstall\{APP_ID}_is1"
 CLASSES = r"Software\Classes"
 FOLDERID_PROGRAMS = "A77F5D77-2E2B-44C3-A6A2-ABA601054A51"
