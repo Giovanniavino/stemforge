@@ -171,6 +171,33 @@ def test_51_keeps_the_centre_where_the_voice_is(tmp_path, fake_backends):
     assert any("6" in w and "BS.775" in w for w in warnings)
 
 
+def _tone_level(signal: np.ndarray, rate: int, freq: float) -> float:
+    spectrum = np.abs(np.fft.rfft(signal * np.hanning(signal.size)))
+    k = int(round(freq * signal.size / rate))
+    return float(spectrum[k - 2 : k + 3].max())
+
+
+def test_ogg_51_is_read_in_vorbis_order(tmp_path):
+    # libsndfile dà l'Ogg in ordine Vorbis (L C R Ls Rs LFE), non WAV:
+    # senza riordino il centro finirebbe solo a destra e l'LFE nel surround
+    rate, freqs = 48000, (200, 300, 400, 500, 600, 700)  # un tono per canale Vorbis
+    t = np.arange(2 * rate) / rate
+    audio = np.stack([0.2 * np.sin(2 * np.pi * f * t) for f in freqs]).astype(np.float32)
+    left, right = audio_io.load(write(tmp_path / "film.ogg", audio, rate, "VORBIS")).data
+    ref = _tone_level(left, rate, 200)
+
+    def level(channel, freq):
+        return _tone_level(channel, rate, freq) / ref
+
+    g = downmix.MINUS_3_DB
+    assert level(right, 400) == pytest.approx(1.0, abs=0.1)  # R
+    assert level(left, 300) == pytest.approx(g, abs=0.07)  # C a -3 dB su entrambi
+    assert level(right, 300) == pytest.approx(g, abs=0.07)
+    assert level(left, 500) == pytest.approx(g, abs=0.07) and level(right, 500) < 0.05  # Ls
+    assert level(right, 600) == pytest.approx(g, abs=0.07) and level(left, 600) < 0.05  # Rs
+    assert max(level(left, 700), level(right, 700)) < 0.05  # LFE escluso
+
+
 def test_bs775_coefficients():
     m = downmix.matrix(6)  # L R C LFE Ls Rs
     g = math.sqrt(0.5)

@@ -41,11 +41,28 @@ LAYOUTS: dict[int, tuple[str, ...]] = {
 
 MAX_CHANNELS = max(LAYOUTS)
 
+# libsndfile restituisce l'Ogg (Vorbis, Opus) nell'ordine della specifica
+# Vorbis, L C R Ls Rs [Lb Rb] LFE, senza riordinarlo come fa FFmpeg:
+# per ogni canale WAV, il suo indice Vorbis. Il quad coincide già.
+VORBIS_TO_WAV: dict[int, tuple[int, ...]] = {
+    3: (0, 2, 1),
+    5: (0, 2, 1, 3, 4),
+    6: (0, 2, 1, 5, 3, 4),
+    7: (0, 2, 1, 6, 5, 3, 4),
+    8: (0, 2, 1, 7, 5, 6, 3, 4),
+}
+
 
 def matrix(channels: int) -> np.ndarray:
     """Matrice [2, channels] del downmix; KeyError per layout sconosciuti."""
     roles = LAYOUTS[channels]
     return np.array([[_GAINS[r][side] for r in roles] for side in (0, 1)], dtype=np.float64)
+
+
+def vorbis_to_wav(data: np.ndarray) -> np.ndarray:
+    """[frames, channels] in ordine Vorbis -> stesso audio in ordine WAV."""
+    order = VORBIS_TO_WAV.get(data.shape[1])
+    return data if order is None else data[:, order]
 
 
 def to_stereo(audio: np.ndarray) -> np.ndarray:

@@ -20,6 +20,7 @@ from types import ModuleType
 import numpy as np
 import soundfile as sf
 
+from stemforge.engine import downmix
 from stemforge.engine.errors import UnsupportedFormatError
 from stemforge.engine.formats import (
     FFMPEG_EXTENSIONS,
@@ -93,9 +94,13 @@ def read(path: Path) -> tuple[np.ndarray, int]:
     if not path.is_file():
         raise UnsupportedFormatError("err.not_found", str(path), name=path.name)
     try:
-        data, samplerate = sf.read(str(path), dtype="float32", always_2d=True)
+        with sf.SoundFile(str(path)) as file:
+            data = file.read(dtype="float32", always_2d=True)
+            samplerate, container = file.samplerate, file.format
     except RuntimeError as exc:  # LibsndfileError: non è un formato di libsndfile
         return _read_with_ffmpeg(path, exc)
+    if container == "OGG":  # dal contenitore, non dall'estensione
+        data = downmix.vorbis_to_wav(data)
     return data, int(samplerate)
 
 
