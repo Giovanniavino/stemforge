@@ -181,7 +181,7 @@ def _check_ffmpeg_decoders(tmp: Path) -> str:
     for codec, name in _FFMPEG_FIXTURES:
         path = ffmpeg.encode_fixture(audio, _SAMPLERATE, tmp / name, codec)
         _verify_decoded(path, codec)
-    return "letti: m4a (aac), alac"
+    return "letti: " + ", ".join(codec for codec, _ in _FFMPEG_FIXTURES)
 
 
 def _run_worker(job: SeparationJob) -> tuple[list[protocol.Message], str]:

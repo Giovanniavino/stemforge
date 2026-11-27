@@ -40,6 +40,20 @@ def test_unknown_license_fails(monkeypatch):
     assert selftest._run_check("lic", selftest._check_ffmpeg_license).status == "fail"
 
 
+def test_decoders_check_covers_aac_and_alac(monkeypatch, tmp_path):
+    # §10.5: il collaudo deve aprire davvero un alac, non solo l'aac
+    _install(monkeypatch, LGPL)
+    fake = sys.modules["stemforge.engine.ffmpeg"]
+    encoded: list[str] = []
+    fake.encode_fixture = lambda audio, rate, dest, codec: encoded.append(codec) or dest
+    verified: list[str] = []
+    monkeypatch.setattr(selftest, "_verify_decoded", lambda path, label: verified.append(label))
+    check = selftest._run_check("dec", lambda: selftest._check_ffmpeg_decoders(tmp_path))
+    assert check.status == "ok", check.detail
+    assert encoded == verified == ["aac", "alac"]
+    assert "alac" in check.detail
+
+
 def test_missing_binary_is_skip_from_sources_and_fail_in_package(monkeypatch):
     _install(monkeypatch, LGPL, located=False)
     assert selftest._run_check("lic", selftest._check_ffmpeg_license).status == "skip"
