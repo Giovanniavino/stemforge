@@ -26,3 +26,6 @@ stems/
 packaging/build/
 packaging/dist/
 gen_lock_err.txt
+
+# worktree e stato locale di Claude Code
+.claude/
