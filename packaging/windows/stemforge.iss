@@ -1,22 +1,46 @@
-; Installer Windows di StemForge (BUILD_SPEC §9.7) — Inno Setup 6.
+﻿; Installer Windows di StemForge (BUILD_SPEC §9.7) — Inno Setup 6.3+.
 ;
-;   iscc /DAppVersion=1.0.0 packaging\windows\stemforge.iss
+;   python packaging\windows\build_installer.py
+;
+; che genera packaging\build\icon.ico e chiama ISCC con /DAppVersion e
+; /DLongestRelPath (percorso relativo più lungo dentro l'app, misurato).
+; Legge l'app da packaging\dist\StemForge (PyInstaller); scrive
+; dist\StemForge-<versione>-windows-x64-setup.exe.
 ;
 ; Scelte:
 ; - installazione PER UTENTE, senza diritti di amministratore: niente
 ;   richiesta UAC, niente PC aziendali bloccati; chi vuole installare per
-;   tutti sceglie dal dialogo iniziale (PrivilegesRequiredOverridesAllowed).
-; - "Apri con" per i formati audio, registrato solo sotto Applications\:
-;   StemForge compare nel menu senza rubare l'associazione predefinita.
-; - alla disinstallazione si CHIEDE se eliminare i modelli scaricati
-;   (~1 GB in %LOCALAPPDATA%\StemForge): lasciarli in silenzio sarebbe
-;   un GB perso, cancellarli in silenzio un download da rifare.
+;   tutti lo sceglie dal dialogo iniziale o con /ALLUSERS.
+; - "Apri con" per i formati audio: un ProgID proprio elencato sotto
+;   OpenWithProgids di ogni estensione, più la voce Applications\ con i
+;   SupportedTypes. Il valore predefinito delle estensioni e la UserChoice
+;   non si toccano: StemForge compare nel menu senza rubare l'associazione.
+; - alla disinstallazione si CHIEDE se eliminare modelli, calibrazione e
+;   log (~1 GB in %LOCALAPPDATA%\StemForge): lasciarli in silenzio sarebbe
+;   un GB perso, cancellarli in silenzio un download da rifare. In modalità
+;   silenziosa nessuno può rispondere, quindi i dati restano.
+; - percorsi lunghi: Inno Setup non scrive file oltre MAX_PATH (259
+;   caratteri) nemmeno con i percorsi lunghi di Windows attivi (provato
+;   con ISCC 6.7.2: la copia si interrompe a metà con "Impossibile trovare
+;   il percorso specificato"). L'installer rifiuta quindi PRIMA di copiare,
+;   con un messaggio chiaro, una cartella in cui il file più profondo
+;   dell'app non ci starebbe.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
 #endif
+#ifndef LongestRelPath
+  #error Passa /DLongestRelPath=<n>: lo misura packaging\windows\build_installer.py
+#endif
+; Solo per il collaudo della domanda di disinstallazione su una cartella
+; finta (packaging\windows\check_uninstall_prompt.py): il "Sì" non deve
+; poter cancellare i modelli veri della macchina di build.
+#ifndef DataDirName
+  #define DataDirName "StemForge"
+#endif
 #define AppName "StemForge"
 #define AppExe "StemForge.exe"
+#define ProgId "StemForge.AudioFile"
 
 [Setup]
 AppId={{6B7C2E1F-4A3D-4F8B-9C21-5E0D7A9B3F42}
@@ -31,7 +55,7 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=dialog
+PrivilegesRequiredOverridesAllowed=commandline dialog
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
@@ -42,8 +66,14 @@ UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName}
 Compression=lzma2/ultra64
 SolidCompression=yes
-LZMANumBlockThreads=4
+; ISCC è a 32 bit: con ultra64 su ~600 MB e 4 blocchi in parallelo il
+; compilatore esauriva lo spazio di indirizzi ("Out of memory", visto sul
+; dev-box). Il processo separato è islzma64.exe sui Windows a 64 bit.
+LZMAUseSeparateProcess=yes
+LZMANumBlockThreads=2
 WizardStyle=modern
+; la lingua si chiede solo se quella di Windows non è né italiano né inglese
+ShowLanguageDialog=auto
 ChangesAssociations=yes
 CloseApplications=yes
 
@@ -52,8 +82,14 @@ Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [CustomMessages]
-italian.DeleteModels=Eliminare anche i modelli di separazione scaricati (circa 1 GB)?%n%nSe pensi di reinstallare StemForge, scegli No: eviterai di riscaricarli.
-english.DeleteModels=Also delete the downloaded separation models (about 1 GB)?%n%nIf you plan to reinstall StemForge, choose No to avoid downloading them again.
+italian.DeleteUserData=Eliminare anche i modelli di separazione scaricati, la calibrazione e i log (circa 1 GB)?%n%n%1%n%nSe pensi di reinstallare StemForge, scegli No: eviterai di riscaricare i modelli.
+english.DeleteUserData=Also delete the downloaded separation models, the calibration and the logs (about 1 GB)?%n%n%1%n%nIf you plan to reinstall StemForge, choose No to avoid downloading the models again.
+italian.DeleteFailed=Impossibile eliminare del tutto %1: puoi cancellarla a mano.
+english.DeleteFailed=Could not fully delete %1: you can remove it by hand.
+italian.AudioFileType=File audio
+english.AudioFileType=Audio file
+italian.PathTooLong=La cartella scelta è troppo lunga (%3 caratteri):%n%n%1%n%nAlcuni file di StemForge supererebbero il limite di 259 caratteri dei percorsi di Windows. Scegli una cartella di al massimo %2 caratteri.
+english.PathTooLong=The selected folder is too long (%3 characters):%n%n%1%n%nSome StemForge files would exceed the 259-character Windows path limit. Choose a folder of at most %2 characters.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
@@ -66,6 +102,11 @@ Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
+; il ProgID che "Apri con" propone: icona e comando sono quelli dell'app
+Root: HKA; Subkey: "Software\Classes\{#ProgId}"; ValueType: string; ValueData: "{cm:AudioFileType}"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\{#ProgId}\DefaultIcon"; ValueType: string; ValueData: """{app}\{#AppExe}"",0"
+Root: HKA; Subkey: "Software\Classes\{#ProgId}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""
+; la voce Applications\ dà il nome mostrato e limita l'app ai tipi audio
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}"; ValueType: string; ValueName: "FriendlyAppName"; ValueData: "{#AppName}"; Flags: uninsdeletekey
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\shell\open\command"; ValueType: string; ValueData: """{app}\{#AppExe}"" ""%1"""
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".wav"; ValueData: ""
@@ -75,26 +116,82 @@ Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; Val
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".m4a"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".aiff"; ValueData: ""
 Root: HKA; Subkey: "Software\Classes\Applications\{#AppExe}\SupportedTypes"; ValueType: string; ValueName: ".aif"; ValueData: ""
-Root: HKA; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: none; ValueName: "Applications\{#AppExe}"; Flags: uninsdeletevalue
-Root: HKA; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: none; ValueName: "Applications\{#AppExe}"; Flags: uninsdeletevalue
-Root: HKA; Subkey: "Software\Classes\.flac\OpenWithProgids"; ValueType: none; ValueName: "Applications\{#AppExe}"; Flags: uninsdeletevalue
-Root: HKA; Subkey: "Software\Classes\.m4a\OpenWithProgids"; ValueType: none; ValueName: "Applications\{#AppExe}"; Flags: uninsdeletevalue
+; un valore stringa vuoto sotto OpenWithProgids aggiunge l'app al menu e
+; basta. NON "ValueType: none": Inno con none crea la chiave ma nessun
+; valore, e l'app non compare nel menu (provato con ISCC 6.7.2).
+; Si toglie solo il NOSTRO valore, OpenWithProgids solo se è rimasta vuota
+; e la chiave dell'estensione solo se è vuota anch'essa (cioè se le aveva
+; create l'installazione su un profilo nuovo). La riga della chiave
+; .ext viene PRIMA di quella di OpenWithProgids: il disinstallatore
+; ripercorre le voci al contrario, quindi la svuota prima di valutarla.
+Root: HKA; Subkey: "Software\Classes\.wav"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.mp3"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.flac"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.flac\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ogg"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.ogg\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.m4a"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.m4a\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aiff"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aiff\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aif"; Flags: uninsdeletekeyifempty
+Root: HKA; Subkey: "Software\Classes\.aif\OpenWithProgids"; ValueType: string; ValueName: "{#ProgId}"; ValueData: ""; Flags: uninsdeletevalue uninsdeletekeyifempty
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchProgram,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+const
+  { MAX_PATH di Win32 (260) meno il terminatore }
+  ClassicMaxPath = 259;
+  LongestRelPath = {#LongestRelPath};
+
+function MaxInstallDirLength(): Integer;
+begin
+  { cartella + separatore + percorso interno più lungo entro MAX_PATH }
+  Result := ClassicMaxPath - 1 - LongestRelPath;
+end;
+
+function NextButtonClick(CurPageID: Integer): Boolean;
+var
+  Dir: String;
+begin
+  Result := True;
+  if CurPageID <> wpSelectDir then
+    Exit;
+  Dir := RemoveBackslashUnlessRoot(WizardDirValue());
+#ifdef NoPathLengthCheck
+  { solo collaudo (check_uninstall_prompt.py): prova che senza controllo la copia si rompe }
+  Log(Format('Controllo della lunghezza spento: cartella di %d caratteri', [Length(Dir)]));
+  Exit;
+#endif
+  if Length(Dir) > MaxInstallDirLength() then
+  begin
+    { in silenzio (/DIR= troppo lunga) il messaggio va nel log e Setup esce con errore }
+    Log(Format('Cartella troppo lunga: %d caratteri, massimo %d', [Length(Dir), MaxInstallDirLength()]));
+    { una riga che comincia con "[" sarebbe letta come una nuova sezione }
+    SuppressibleMsgBox(FmtMessage(CustomMessage('PathTooLong'), [Dir, IntToStr(MaxInstallDirLength()), IntToStr(Length(Dir))]),
+                       mbError, MB_OK, IDOK);
+    Result := False;
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   DataDir: String;
 begin
-  if CurUninstallStep = usPostUninstall then
+  if CurUninstallStep <> usPostUninstall then
+    Exit;
+  DataDir := ExpandConstant('{localappdata}\{#DataDirName}');
+  { /SILENT e /VERYSILENT: nessuno può rispondere, i dati restano }
+  if UninstallSilent() or not DirExists(DataDir) then
+    Exit;
+  if MsgBox(FmtMessage(CustomMessage('DeleteUserData'), [DataDir]),
+            mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
   begin
-    DataDir := ExpandConstant('{localappdata}\StemForge');
-    if DirExists(DataDir) and not UninstallSilent() then
-    begin
-      if MsgBox(CustomMessage('DeleteModels'), mbConfirmation, MB_YESNO or MB_DEFBUTTON2) = IDYES then
-        DelTree(DataDir, True, True, True);
-    end;
+    if not DelTree(DataDir, True, True, True) then
+      MsgBox(FmtMessage(CustomMessage('DeleteFailed'), [DataDir]), mbError, MB_OK);
   end;
 end;

@@ -1,0 +1,189 @@
+"""Lo script Inno Setup rispetta §9.7 (letto come testo, gira ovunque).
+
+La compilazione vera sta in tests/integration/test_pkg_windows_compile.py
+(solo dove c'è ISCC); qui le regole che un errore di battitura romperebbe
+senza che nessuno se ne accorga fino all'utente.
+"""
+
+from __future__ import annotations
+
+import ast
+import re
+from pathlib import Path
+
+import pytest
+
+from stemforge.worker.planning import SUPPORTED_SUFFIXES
+
+ROOT = Path(__file__).resolve().parents[2]
+ISS = ROOT / "packaging" / "windows" / "stemforge.iss"
+INTEGRATION = ROOT / "packaging" / "windows" / "windows_integration.py"
+
+
+def _section(name: str) -> list[str]:
+    text = ISS.read_text(encoding="utf-8-sig")
+    match = re.search(rf"^\[{name}\]\n(.*?)(?=^\[\w+\]$|\Z)", text, re.S | re.M)
+    assert match, f"sezione [{name}] assente"
+    return [line for line in match.group(1).splitlines() if line.strip() and not line.startswith(";")]
+
+
+def _setup() -> dict[str, str]:
+    return dict(line.split("=", 1) for line in _section("Setup"))
+
+
+def _registry() -> list[dict[str, str]]:
+    entries = []
+    for line in _section("Registry"):
+        fields = dict(re.findall(r'(\w+): ("(?:[^"]|"")*"|[^;]+)', line))
+        entries.append({k: _unquote(v.strip()) for k, v in fields.items()})
+    return entries
+
+
+def _unquote(value: str) -> str:
+    return value[1:-1].replace('""', '"') if value.startswith('"') else value
+
+
+def _verifier_constants(source: Path = INTEGRATION) -> dict[str, object]:
+    """Costanti del verificatore lette senza importarlo: usa winreg, che esiste solo su Windows."""
+    constants: dict[str, object] = {}
+    for node in ast.parse(source.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
+            try:
+                constants[node.targets[0].id] = ast.literal_eval(node.value)
+            except ValueError:
+                continue  # non è una costante letterale (un percorso, un alias di tipo)
+    return constants
+
+
+def _defines() -> dict[str, str]:
+    text = ISS.read_text(encoding="utf-8-sig")
+    return dict(re.findall(r'^\s*#define (\w+) "([^"]*)"', text, re.M))
+
+
+def test_per_user_install_without_admin():
+    setup = _setup()
+    assert setup["PrivilegesRequired"] == "lowest"
+    assert "dialog" in setup["PrivilegesRequiredOverridesAllowed"]
+    assert "commandline" in setup["PrivilegesRequiredOverridesAllowed"]  # /CURRENTUSER in CI
+    assert setup["DefaultDirName"].startswith("{autopf}")
+
+
+def test_compressor_runs_outside_the_32_bit_compiler():
+    """Con l'app vera (~600 MB) ISCC a 32 bit finiva la memoria a metà
+    compressione: l'LZMA deve girare nel processo separato a 64 bit."""
+    setup = _setup()
+    assert setup["Compression"].startswith("lzma2")
+    assert setup["LZMAUseSeparateProcess"] == "yes"
+
+
+def test_identity_matches_the_verifier():
+    verifier = _verifier_constants()
+    assert _setup()["AppId"] == "{" + str(verifier["APP_ID"])
+    assert _defines()["ProgId"] == verifier["PROG_ID"]
+    assert _defines()["AppExe"] == verifier["APP_EXE"]
+
+
+def test_open_with_covers_every_format_the_app_reads():
+    registry = _registry()
+    supported = {e["ValueName"] for e in registry if e["Subkey"].endswith(r"\SupportedTypes")}
+    open_with = {
+        e["Subkey"].split("\\")[2]
+        for e in registry
+        if e["Subkey"].endswith(r"\OpenWithProgids") and e["ValueName"] == "{#ProgId}"
+    }
+    assert supported == set(SUPPORTED_SUFFIXES) == set(_verifier_constants()["EXTENSIONS"])
+    assert open_with == set(SUPPORTED_SUFFIXES)
+
+
+def _extension_entries() -> list[dict[str, str]]:
+    return [e for e in _registry() if re.fullmatch(r"Software\\Classes\\\.\w+.*", e["Subkey"])]
+
+
+def test_never_steals_the_default_association():
+    for entry in _extension_entries():
+        subkey = entry["Subkey"]
+        if re.fullmatch(r"Software\\Classes\\\.\w+", subkey):
+            # la chiave .ext: nessun valore scritto (il predefinito è l'associazione), via solo se vuota
+            assert set(entry) == {"Root", "Subkey", "Flags"} and entry["Flags"] == "uninsdeletekeyifempty", entry
+            continue
+        # sotto l'estensione solo OpenWithProgids, e solo un nostro valore
+        assert subkey.endswith(r"\OpenWithProgids"), subkey
+        # "none" in Inno non crea il valore: serve una stringa vuota (provato con ISCC 6.7.2)
+        assert (entry["ValueName"], entry["ValueType"], entry["ValueData"]) == ("{#ProgId}", "string", "")
+        # OpenWithProgids non è nostra: si toglie il valore, e la chiave solo se vuota
+        assert entry["Flags"].split() == ["uninsdeletevalue", "uninsdeletekeyifempty"], entry["Flags"]
+
+
+def test_extension_key_is_listed_before_its_open_with_progids():
+    """Il disinstallatore ripercorre le voci al contrario: la chiave .ext va
+    valutata DOPO aver tolto il nostro valore, altrimenti non è mai vuota."""
+    subkeys = [e["Subkey"] for e in _extension_entries()]
+    for ext in SUPPORTED_SUFFIXES:
+        key = rf"Software\Classes\{ext}"
+        assert subkeys.index(key) < subkeys.index(key + r"\OpenWithProgids"), ext
+
+
+def test_registry_is_removed_on_uninstall():
+    owned = [e for e in _registry() if e["Subkey"] in (r"Software\Classes\{#ProgId}", r"Software\Classes\Applications\{#AppExe}")]
+    roots = {e["Subkey"] for e in owned if "uninsdeletekey" in e.get("Flags", "")}
+    assert roots == {r"Software\Classes\{#ProgId}", r"Software\Classes\Applications\{#AppExe}"}
+    assert all(e["Root"] == "HKA" for e in _registry()), "HKA: HKCU per utente, HKLM per tutti"
+
+
+def test_open_command_quotes_path_and_argument():
+    commands = [e["ValueData"] for e in _registry() if e["Subkey"].endswith(r"\shell\open\command")]
+    assert commands and all(c == '"{app}\\{#AppExe}" "%1"' for c in commands)
+
+
+def test_desktop_icon_is_optional_and_off_by_default():
+    tasks = " ".join(_section("Tasks"))
+    assert 'Name: "desktopicon"' in tasks and "Flags: unchecked" in tasks
+    desktop = [line for line in _section("Icons") if "{autodesktop}" in line]
+    assert desktop and all("Tasks: desktopicon" in line for line in desktop)
+    assert any("{autoprograms}" in line for line in _section("Icons"))
+    # il collaudo la sceglie con /TASKS=<nome>: un nome diverso la lascerebbe spenta senza errori
+    verifier = _verifier_constants(ROOT / "packaging" / "ci" / "verify_windows_installer.py")
+    assert verifier["_DESKTOP_TASK"] == "desktopicon"
+
+
+def test_uninstall_asks_before_deleting_and_never_in_silent_mode():
+    code = "\n".join(_section("Code"))
+    assert "{localappdata}\\{#DataDirName}" in code
+    assert _defines()["DataDirName"] == "StemForge"  # §9.2: %LOCALAPPDATA%\StemForge
+    silent_exit = code.index("UninstallSilent()")
+    assert code.index("Exit;", silent_exit) < code.index("DelTree"), "in silenzio si esce prima di DelTree"
+    assert "MB_DEFBUTTON2" in code, "il pulsante predefinito deve essere No"
+    assert code.index("MsgBox(") < code.index("DelTree")
+
+
+def test_test_only_switches_are_off_in_the_real_build():
+    """DataDirName e NoPathLengthCheck esistono solo per il collaudo: la
+    build vera (build_installer.main) non li passa e lo script non li accende."""
+    text = ISS.read_text(encoding="utf-8-sig")
+    assert not re.search(r"^\s*#define\s+NoPathLengthCheck", text, re.M)
+    assert "#ifdef NoPathLengthCheck" in text
+    source = (ROOT / "packaging" / "windows" / "build_installer.py").read_text(encoding="utf-8")
+    main = source[source.index("def main()"):]
+    assert "compile_installer(args.iscc, PACKAGING, version)" in main
+
+
+def test_folder_length_is_checked_before_copying():
+    code = "\n".join(_section("Code"))
+    check = code.index("function NextButtonClick")
+    assert "wpSelectDir" in code[check:] and "MaxInstallDirLength()" in code[check:]
+    assert "LongPathsEnabled" not in code, "Inno non scrive oltre MAX_PATH nemmeno con i percorsi lunghi attivi"
+
+
+def test_refusal_log_line_is_the_one_the_verifier_parses():
+    """Il collaudo dei percorsi lunghi legge dal log il massimo accettato:
+    se la riga cambia da una parte sola, il collaudo non trova il rifiuto."""
+    code = "\n".join(_section("Code"))
+    expected = str(_verifier_constants()["REFUSED_DIR_LOG"])
+    assert f"Log(Format('{expected}', [Length(Dir), MaxInstallDirLength()]))" in code
+
+
+@pytest.mark.parametrize("language", ["italian", "english"])
+def test_messages_exist_in_both_languages(language: str):
+    names = {line.split("=", 1)[0] for line in _section("CustomMessages")}
+    for message in ("DeleteUserData", "DeleteFailed", "AudioFileType", "PathTooLong"):
+        assert f"{language}.{message}" in names

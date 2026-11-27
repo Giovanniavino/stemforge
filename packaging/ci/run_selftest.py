@@ -17,7 +17,8 @@ _TIMEOUT_S = 60 * 60
 
 
 def main() -> int:
-    exe, report = sys.argv[1], Path(sys.argv[2])
+    # CreateProcess di Windows non trova un relativo con le barre normali
+    exe, report = str(Path(sys.argv[1]).resolve()), Path(sys.argv[2])
     command = [exe, "--selftest", "--report", str(report), *sys.argv[3:]]
     print("$", " ".join(command), flush=True)
     proc = subprocess.run(command, capture_output=True, text=True, errors="replace", timeout=_TIMEOUT_S)
