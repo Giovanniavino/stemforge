@@ -14,7 +14,12 @@ L R Ls Rs, la maschera di default di WAVE_FORMAT_EXTENSIBLE.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING, Any
+
 import numpy as np
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 MINUS_3_DB = float(np.sqrt(0.5))  # 0.7071: centro e surround (BS.775)
 
@@ -53,19 +58,19 @@ VORBIS_TO_WAV: dict[int, tuple[int, ...]] = {
 }
 
 
-def matrix(channels: int) -> np.ndarray:
+def matrix(channels: int) -> NDArray[np.float64]:
     """Matrice [2, channels] del downmix; KeyError per layout sconosciuti."""
     roles = LAYOUTS[channels]
     return np.array([[_GAINS[r][side] for r in roles] for side in (0, 1)], dtype=np.float64)
 
 
-def vorbis_to_wav(data: np.ndarray) -> np.ndarray:
+def vorbis_to_wav(data: NDArray[Any]) -> NDArray[Any]:
     """[frames, channels] in ordine Vorbis -> stesso audio in ordine WAV."""
     order = VORBIS_TO_WAV.get(data.shape[1])
     return data if order is None else data[:, order]
 
 
-def to_stereo(audio: np.ndarray) -> np.ndarray:
+def to_stereo(audio: NDArray[Any]) -> NDArray[np.float32]:
     """[channels, samples] multicanale -> [2, samples] float32."""
     weights = matrix(audio.shape[0]).astype(np.float32)
     return np.ascontiguousarray(weights @ audio, dtype=np.float32)

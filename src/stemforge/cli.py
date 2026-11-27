@@ -40,7 +40,7 @@ def _parse_stems(raw: str) -> tuple[StemKind, ...]:
             kinds.append(StemKind(token))
         except ValueError:
             valid = ", ".join(k.value for k in StemKind)
-            raise SystemExit(t("cli.unknown_stem", stem=token, valid=valid))
+            raise SystemExit(t("cli.unknown_stem", stem=token, valid=valid)) from None
     if not kinds:
         raise SystemExit(t("cli.no_stems"))
     return tuple(kinds)
