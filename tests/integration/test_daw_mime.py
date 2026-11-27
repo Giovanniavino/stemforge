@@ -50,7 +50,8 @@ def test_windows_mime_is_file_urls_only():
     urls = mime.urls()
     assert all(url.isLocalFile() for url in urls)
     assert [url.scheme() for url in urls] == ["file", "file"]
-    back = [ntpath.normpath(url.toLocalFile()) for url in urls]
+    # fuori da Windows Qt rende "file:///C:/x" come "/C:/x"
+    back = [ntpath.normpath(url.toLocalFile().removeprefix("/")) for url in urls]
     assert back == WIN_FILES
     assert urls[0].toString().startswith("file:///C:/Musica/")
 

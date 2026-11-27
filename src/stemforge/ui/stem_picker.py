@@ -12,7 +12,6 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication, QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -24,6 +23,7 @@ from PySide6.QtWidgets import (
 from stemforge.model.job import SeparationJob
 from stemforge.model.stem import StemKind
 from stemforge.ui import a11y
+from stemforge.ui.fitted_combo import FittedComboBox
 from stemforge.ui.stem_group import StemGroup
 from stemforge.worker import planning
 
@@ -168,16 +168,12 @@ class StemPicker(QWidget):
 
     def _build_bottom(self, layout: QVBoxLayout) -> None:
         bottom = QHBoxLayout()
-        self._quality = QComboBox()
+        self._quality = FittedComboBox()
         for value in _QUALITIES:
             self._quality.addItem("", userData=value)
-        self._format = QComboBox()
+        self._format = FittedComboBox()
         self._format.addItem("WAV", userData="wav")
         self._format.addItem("FLAC", userData="flac")
-        # il default (AdjustToContentsOnFirstShow) misura una volta sola:
-        # dopo un cambio di lingua la voce più lunga resterebbe tagliata
-        for combo in (self._quality, self._format):
-            combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._quality_label = QLabel()
         self._quality_label.setBuddy(self._quality)
         self._format_label = QLabel()

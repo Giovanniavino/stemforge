@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from PySide6.QtCore import QCoreApplication, QEvent, Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 
 from stemforge.ui import a11y, i18n
 from stemforge.ui.diagnostics_action import DiagnosticsExporter
+from stemforge.ui.fitted_combo import FittedComboBox
 
 translate = QCoreApplication.translate
 
@@ -35,8 +35,7 @@ class HomeFooter(QWidget):
 
         row = QHBoxLayout()
         self._language_label = QLabel()
-        self.language = QComboBox()
-        self.language.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.language = FittedComboBox()
         self._language_label.setBuddy(self.language)
         self.language.addItem("", userData="")
         for code, label in _LANGUAGE_NAMES:

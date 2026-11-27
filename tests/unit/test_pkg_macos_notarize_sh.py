@@ -55,6 +55,7 @@ def _fake_app(root: Path) -> Path:
     app = root / "StemForge.app"
     # "#!" in testa: Git Bash considera eseguibile solo cio' che inizia cosi'
     _write(app / "Contents" / "MacOS" / "StemForge", f"#!/bin/sh\n{MACHO_MARK}\n")
+    (app / "Contents" / "MacOS" / "StemForge").chmod(0o755)  # e su macOS/Linux il bit x
     for inner in ("Frameworks/libtorch_cpu.dylib", "Frameworks/ffmpeg/ffmpeg",
                   "Frameworks/PySide6/Qt/lib/QtCore.framework/Versions/A/QtCore"):
         _write(app / "Contents" / inner, MACHO_MARK)
@@ -68,6 +69,7 @@ def run_notarize(tmp_path: Path, status: str = "Accepted", notary_rc: int = 0,
     fakebin = tmp_path / "bin"
     for name, body in FAKE_TOOLS.items():
         _write(fakebin / name, f"#!/bin/sh\n{body}\n")
+        (fakebin / name).chmod(0o755)  # su macOS/Linux PATH trova solo gli eseguibili
     log = tmp_path / "log.txt"
     log.touch()
     answer = tmp_path / "submit.json"
