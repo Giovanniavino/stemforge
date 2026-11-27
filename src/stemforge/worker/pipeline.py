@@ -19,7 +19,9 @@ Decisioni non ovvie, con la ragione:
 
 from __future__ import annotations
 
+import shutil
 import time
+from pathlib import Path
 from typing import Callable
 
 import numpy as np
@@ -119,6 +121,23 @@ def _new_state(job: SeparationJob, backends: BackendCache,
     return state
 
 
+def _separate_and_write(job: SeparationJob, plan_: Plan, source: audio_io.SourceAudio,
+                        out_dir: Path, backends: BackendCache, progress: _Progress,
+                        state: JobState, emit: Emit,
+                        should_cancel: Callable[[], bool]) -> JobResult:
+    work = audio_io.resample(source.data, source.samplerate, audio_io.MODEL_SAMPLERATE)
+    if source.downmixed:
+        state.warnings.append(
+            t("warn.downmix", name=job.source.name, channels=source.source_channels)
+        )
+    _execute_passes(job, plan_, work, backends, progress, state,
+                    source.duration_s, emit, should_cancel)
+    write = assemble.effective_write(job, state.unavailable)
+    outputs = assemble.assemble_outputs(write, source, state.stage1, state.stems)
+    return assemble.write_all(job, write, source, out_dir, outputs,
+                              state.wet_vocals.get("wet"), plan_, state.warnings, emit)
+
+
 def run_job(
     job: SeparationJob,
     emit: Emit,
@@ -138,19 +157,14 @@ def run_job(
     progress = _Progress(emit, weights)
     out_dir = folder.allocate_out_dir(job.out_dir, job.source.name)
     emit(protocol.Started(out_dir=str(out_dir)))
-
-    work = audio_io.resample(source.data, source.samplerate, audio_io.MODEL_SAMPLERATE)
     state = _new_state(job, backends, available_memory)
-    if source.downmixed:
-        state.warnings.append(
-            t("warn.downmix", name=job.source.name, channels=source.source_channels)
-        )
-    _execute_passes(job, plan_, work, backends, progress, state,
-                    source.duration_s, emit, should_cancel)
-    write = assemble.effective_write(job, state.unavailable)
-    outputs = assemble.assemble_outputs(write, source, state.stage1, state.stems)
-    result = assemble.write_all(job, write, source, out_dir, outputs,
-                                state.wet_vocals.get("wet"), plan_, state.warnings, emit)
+    try:
+        result = _separate_and_write(job, plan_, source, out_dir, backends, progress,
+                                     state, emit, should_cancel)
+    except BaseException:
+        # una cartella a metà sembrerebbe un risultato valido (anche Ctrl+C in CLI)
+        shutil.rmtree(out_dir, ignore_errors=True)
+        raise
     for message in result.warnings:
         emit(protocol.Warning_(message=message))
     emit(protocol.Done(out_dir=str(result.out_dir), manifest=str(result.out_dir / "manifest.json")))

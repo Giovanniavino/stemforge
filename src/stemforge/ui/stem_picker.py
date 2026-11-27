@@ -278,6 +278,8 @@ class StemPicker(QWidget):
         # la resa completa: tutti i base, preset resta `best`
         for kind, box in self._boxes.items():
             box.setChecked(kind != StemKind.INSTRUMENTAL)
+        # "Solo voce" abbassa a `balanced`: "Tutto" deve riportare `best`
+        self._quality.setCurrentIndex(self._quality.findData("best"))
         self._refresh_estimate()
 
     def _select_vocals_only(self) -> None:

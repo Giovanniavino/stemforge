@@ -25,11 +25,9 @@ from stemforge.worker import i18n, protocol
 from stemforge.worker.i18n import t
 from stemforge.worker.messages import user_message
 from stemforge.worker.pipeline import BackendCache, run_job
+from stemforge.worker.planning import ESTIMATE_MARGIN
 
 log = logging.getLogger(__name__)
-
-# Il margine di sovrastima della stima mostrata (§8.2.1).
-ESTIMATE_MARGIN = 1.15
 
 
 def _parse_stems(raw: str) -> tuple[StemKind, ...]:

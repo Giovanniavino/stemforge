@@ -177,3 +177,21 @@ def test_collision_never_overwrites(mix_44k, tmp_path, fake_backends):
                      emit=lambda m: None, backends=cache)
     assert first.out_dir.name == "brano"
     assert second.out_dir.name == "brano (2)"
+
+
+def test_failed_job_removes_its_out_dir(mix_44k, tmp_path, fake_backends):
+    # un job fallito a metà non deve lasciare una cartella che sembra un risultato
+    cache, fake = fake_backends()
+
+    def broken(*_args, **_kwargs):
+        raise MemoryError("finto")
+
+    fake.separate = broken
+    out = tmp_path / "out"
+    try:
+        run_job(make_job(mix_44k, out, K.VOCALS, K.OTHER), emit=lambda m: None, backends=cache)
+    except MemoryError:
+        pass
+    else:
+        raise AssertionError("il job doveva fallire")
+    assert list(out.iterdir()) == []

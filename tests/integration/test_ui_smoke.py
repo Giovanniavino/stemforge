@@ -53,6 +53,11 @@ def test_picker_estimate_scales_and_dependencies(qapp, italian, tmp_path: Path):
     solo_estimate = picker._estimate.text()
     assert solo_estimate != full_estimate
 
+    # "Tutto" dopo "Solo voce" riporta la qualità massima
+    picker._select_all()
+    assert picker._quality.currentData() == "best"
+    picker._select_vocals_only()
+
     # spuntare un derivato seleziona la dipendenza (§5.3)
     picker._boxes[K.DRUMS].setChecked(False)
     picker._drum_group._boxes[K.KICK].setChecked(True)
@@ -82,6 +87,14 @@ def test_all_screens_construct(qapp, tmp_path: Path):
     accepted, rejected = _collect_audio_files([tmp_path / "a.wav", tmp_path / "b.txt"])
     assert [p.name for p in accepted] == ["a.wav"]
     assert rejected == 1
+
+    # una cartella di output di StemForge dentro quella trascinata si salta
+    done = tmp_path / "StemForge" / "brano"
+    done.mkdir(parents=True)
+    (done / "vocals.wav").touch()
+    (done / "manifest.json").touch()
+    accepted, _ = _collect_audio_files([tmp_path])
+    assert [p.name for p in accepted] == ["a.wav"]
 
 
 def test_prepare_failure_leads_to_usable_drop_zone(qapp, tmp_path: Path):
