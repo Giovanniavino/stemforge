@@ -480,3 +480,10 @@ PART 3 — NATIVE LIBRARIES, RUNTIMES AND TOOLS IN THE PACKAGE
   integration from the Linux packaging work: its build script writes the list of
   bundled system libraries next to the AppImage (StemForge-<version>-linux-x86_64.libs.txt);
   each library in that list needs an entry here, with its license]
+
+[Development-only checkers — NOT in any package]
+  versions : ruff 0.17.6, mypy 2.4.1 (the "dev" extra of pyproject.toml, used by "make lint")
+  license  : ruff: MIT; mypy: MIT
+  note     : static checks on the developer's machine; nothing of them is installed by a
+             lock file or bundled into the application
+  source   : https://github.com/astral-sh/ruff, https://github.com/python/mypy

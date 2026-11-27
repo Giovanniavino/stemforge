@@ -124,50 +124,34 @@ def _first_stage_pass(job: SeparationJob, targets: set[StemKind], needs_6s: bool
     )
 
 
+def _second_stage_pass(
+    backend: str, input_stem: StemKind, needed: tuple[StemKind, ...], label: str
+) -> Pass:
+    return Pass(
+        backend=backend,
+        model=backend,
+        input_stem=input_stem,
+        needed=needed,
+        mode="full",
+        rate_key=backend,
+        units=1.0,
+        label=label,
+    )
+
+
 def _second_stage_passes(job: SeparationJob) -> tuple[Pass, ...]:
     wanted = set(job.wanted)
     passes: list[Pass] = []
     drum_derived = tuple(sorted(k for k in wanted if SPECS[k].derives_from == StemKind.DRUMS))
     if drum_derived:
-        passes.append(
-            Pass(
-                backend="drumsplit",
-                model="drumsplit",
-                input_stem=StemKind.DRUMS,
-                needed=drum_derived,
-                mode="full",
-                rate_key="drumsplit",
-                units=1.0,
-                label="Dettaglio batteria",
-            )
-        )
+        passes.append(_second_stage_pass("drumsplit", StemKind.DRUMS, drum_derived, "Dettaglio batteria"))
     if job.dereverb_vocals:
         passes.append(
-            Pass(
-                backend="dereverb",
-                model="dereverb",
-                input_stem=StemKind.VOCALS,
-                needed=(StemKind.VOCALS,),
-                mode="full",
-                rate_key="dereverb",
-                units=1.0,
-                label="De-riverbero voce",
-            )
+            _second_stage_pass("dereverb", StemKind.VOCALS, (StemKind.VOCALS,), "De-riverbero voce")
         )
     vocal_derived = tuple(sorted(k for k in wanted if SPECS[k].derives_from == StemKind.VOCALS))
     if vocal_derived:
-        passes.append(
-            Pass(
-                backend="vocalsplit",
-                model="vocalsplit",
-                input_stem=StemKind.VOCALS,
-                needed=vocal_derived,
-                mode="full",
-                rate_key="vocalsplit",
-                units=1.0,
-                label="Dettaglio voce",
-            )
-        )
+        passes.append(_second_stage_pass("vocalsplit", StemKind.VOCALS, vocal_derived, "Dettaglio voce"))
     return tuple(passes)
 
 

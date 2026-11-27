@@ -24,8 +24,12 @@ di blocchi, lo swap no.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
+
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 BLOCK_THRESHOLD_S = 15 * 60
 BLOCK_LENGTH_S = 300.0  # tetto: più RAM non dà più qualità
@@ -102,7 +106,7 @@ def split_blocks(
     return tuple(blocks)
 
 
-def overlap_add(dest: np.ndarray, chunk: np.ndarray, block: Block) -> None:
+def overlap_add(dest: NDArray[np.float32], chunk: NDArray[np.float32], block: Block) -> None:
     """Accumula un blocco elaborato con rampe lineari complementari.
 
     Nella zona di sovrapposizione dest contiene già la coda del blocco

@@ -14,6 +14,7 @@
 #   make test-compat      il motore con il torch di QUESTO ambiente (§10.6)
 #   make test-fuzz | test-chaos | test-soak    famiglie su richiesta
 #   make test-frozen      la batteria contro l'app impacchettata (FROZEN_EXE=...)
+#   make lint             ruff + mypy --strict (regole in pyproject.toml, extra "dev")
 #   make check-workflows  actionlint (ACTIONLINT=<binario>) e regole dei workflow
 #   make lock | lock-check    rigenera | verifica i lock dei profili
 #   make ffmpeg           FFmpeg LGPL del profilo (D9, packaging/ffmpeg/)
@@ -84,7 +85,7 @@ PYTEST := "$(VPY)" -m pytest tests -q
 # famiglie su richiesta ancora vuote: pytest esce con 5 (nessun test), non e' un errore
 NONE_OK := || [ $$? -eq 5 ]
 
-.PHONY: dev test test-slow test-compat test-fuzz test-chaos test-soak test-frozen check-workflows \
+.PHONY: dev test test-slow test-compat test-fuzz test-chaos test-soak test-frozen lint check-workflows \
 	lock lock-check ffmpeg build build-release check-min-os selftest package \
 	package-legacy-intel package-mac-arm64 package-win-x64 package-linux-x64 \
 	selftest-package selftest-package-legacy-intel selftest-package-mac-arm64 \
@@ -125,6 +126,10 @@ test-soak:
 test-frozen:
 	@test -e "$(FROZEN_EXE)" || { echo "app impacchettata assente: $(FROZEN_EXE) (make build, o FROZEN_EXE=...)" >&2; exit 1; }
 	STEMFORGE_FROZEN_EXE="$(FROZEN_EXE)" $(PYTEST) -m frozen
+
+lint:
+	"$(VPY)" -m ruff check .
+	"$(VPY)" -m mypy
 
 # lo stesso actionlint 1.7.12 del job "workflows" di ci.yml, dal PATH o da
 # ACTIONLINT=...; con shellcheck (PATH o SHELLCHECK=...) controlla anche gli

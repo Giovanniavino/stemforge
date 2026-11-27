@@ -132,6 +132,7 @@ def _separate_and_write(job: SeparationJob, plan_: Plan, source: audio_io.Source
         )
     _execute_passes(job, plan_, work, backends, progress, state,
                     source.duration_s, emit, should_cancel)
+    del work  # copia a 44.1 kHz del brano: inutile da qui, e l'assemblaggio è il picco di RAM
     write = assemble.effective_write(job, state.unavailable)
     outputs = assemble.assemble_outputs(write, source, state.stage1, state.stems)
     return assemble.write_all(job, write, source, out_dir, outputs,
