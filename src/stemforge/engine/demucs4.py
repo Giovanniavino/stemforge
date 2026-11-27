@@ -9,7 +9,7 @@ BUILD_SPEC §5.1, §5.1.1. Scelte non ovvie, con la ragione:
   quindi il conteggio è esatto e `should_cancel` viene consultato
   esattamente fra un segmento e l'altro (§5.5).
 - L'esecuzione parziale (§5.1.1) costruisce un BagOfModels ridotto con i
-  PESI REALI letti dal checkpoint: se un giorno i pesi non fossero
+  PESI REALI letti dallo yaml del bag (lo stesso che legge demucs): se un giorno i pesi non fossero
   one-hot, la selezione includerebbe automaticamente ogni sotto-modello
   con peso non nullo sulle sorgenti richieste, restando identica
   all'insieme completo per costruzione.
@@ -63,59 +63,78 @@ def ensure_models(model_name: str) -> None:
     _load_model(model_name)
 
 
+def _bag_recipe(model_name: str) -> dict:
+    """Firme, pesi e segment del bag dal suo yaml, senza caricare i pesi;
+    un nome senza yaml è un modello singolo, cioè un bag di uno."""
+    import yaml
+    from demucs import pretrained
+
+    path = pretrained.REMOTE_ROOT / f"{model_name}.yaml"
+    if not path.is_file():
+        return {"models": [model_name]}
+    with open(path, encoding="utf-8") as stream:
+        return yaml.safe_load(stream)
+
+
 class Demucs4Backend:
-    """Un'istanza per modello di primo stadio; i pesi si caricano una
-    volta sola e restano vivi per tutto il job, batch compreso (§6.1)."""
+    """Un'istanza per modello di primo stadio. In RAM stanno solo i
+    sotto-modelli che la passata corrente usa (§6.1 punto 3): con un solo
+    stem nei preset parziali sono 160 MB invece di 640. Ognuno si carica
+    una volta sola e resta vivo finché serve, batch compreso (§6.1)."""
 
     name = "demucs4"
     samplerate = 44100
 
     def __init__(self, model_name: str, device: str, quality: Quality) -> None:
+        import torch
+
         self.model_name = model_name
         self.device = device
         self.quality = quality
-        self._model = _load_model(model_name)
+        recipe = _bag_recipe(model_name)
+        self._signatures: list[str] = list(recipe["models"])
+        self._segment = recipe.get("segment")
+        self._loaded: dict[int, object] = {}
+        # le sorgenti stanno solo nel checkpoint: il primo sotto-modello le dà
         self.sources: tuple[StemKind, ...] = tuple(
-            StemKind(s) for s in self._model.sources
+            StemKind(s) for s in self._submodel(0).sources
         )
         self.provides: frozenset[StemKind] = frozenset(self.sources)
-        self._is_bag = hasattr(self._model, "models")
-        self._prepare_device()
+        self._weights: list[list[float]] = recipe.get("weights") or [
+            [1.0] * len(self.sources) for _ in self._signatures
+        ]
+        torch.set_grad_enabled(False)
 
-    def _prepare_device(self) -> None:
-        import torch
-
-        submodels = self._model.models if self._is_bag else [self._model]
-        for sub in submodels:
+    def _submodel(self, index: int):
+        if index not in self._loaded:
+            sub = _load_model(self._signatures[index])
             sub.to(self.device)
             if self.quality.half and self.device == "cuda":
                 sub.half()
-        torch.set_grad_enabled(False)
+            self._loaded[index] = sub
+        return self._loaded[index]
+
+    def _needed(self, wanted: frozenset[StemKind]) -> list[int]:
+        """Sotto-modelli con peso non nullo sulle sorgenti richieste (§5.1.1)."""
+        idx = [i for i, s in enumerate(self.sources) if s in wanted]
+        return [m for m, w in enumerate(self._weights) if any(abs(w[i]) > _EPS for i in idx)]
 
     def _select(self, wanted: frozenset[StemKind]):
-        """Sotto-insieme del bag che copre le sorgenti richieste (§5.1.1)."""
+        """Bag dei soli sotto-modelli che servono; gli altri escono dalla
+        RAM PRIMA di caricare quelli mancanti, così il picco non li somma."""
         from demucs.apply import BagOfModels
 
-        if not self._is_bag:
-            return self._model
-        weights = self._model.weights  # [n_models][n_sources]
-        idx = [i for i, s in enumerate(self.sources) if s in wanted]
-        keep = [
-            m
-            for m, w in enumerate(weights)
-            if any(abs(w[i]) > _EPS for i in idx)
-        ]
-        if len(keep) == len(self._model.models):
-            return self._model
+        keep = self._needed(wanted)
+        for index in set(self._loaded) - set(keep):
+            del self._loaded[index]
         return BagOfModels(
-            [self._model.models[m] for m in keep],
-            weights=[weights[m] for m in keep],
-            segment=getattr(self._model, "segment", None),
+            [self._submodel(m) for m in keep],
+            weights=[self._weights[m] for m in keep],
+            segment=self._segment,
         )
 
     def submodel_count(self, wanted: frozenset[StemKind]) -> int:
-        model = self._select(wanted)
-        return len(model.models) if hasattr(model, "models") else 1
+        return len(self._needed(wanted))
 
     def separate(
         self,
@@ -128,7 +147,7 @@ class Demucs4Backend:
         from demucs.apply import apply_model
 
         model = self._select(wanted)
-        submodels = model.models if hasattr(model, "models") else [model]
+        submodels = list(model.models)
         segment_calls = self._expected_calls(audio.shape[-1], submodels)
         counter = {"done": 0}
         hooks = [
