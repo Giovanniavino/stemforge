@@ -1,0 +1,5 @@
+# notarize.sh lo esegue /bin/sh sul runner macOS e chi firma a mano da
+# una copia del repo: sempre LF, anche in un checkout Windows con
+# core.autocrlf (stessa ragione di installer/ e macos/). Solo questo
+# file: gli altri di packaging/ appartengono ad altre aree.
+notarize.sh text eol=lf

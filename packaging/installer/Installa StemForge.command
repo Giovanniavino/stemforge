@@ -1,15 +1,16 @@
 #!/bin/sh
 # ============================================================================
-# Installer di StemForge per Mac Intel (doppio click).
+# Installer di StemForge per Mac Intel (doppio click). BUILD_SPEC §9.5.
 #
 # Cosa fa, nell'ordine:
-#   1. controlla il Mac (macOS 12+, architettura);
+#   1. controlla il Mac (macOS 10.15+, Intel; Apple Silicon via Rosetta);
 #   2. se manca Python 3.11, scarica quello ufficiale di python.org
 #      e lo installa (chiede la password di amministratore);
 #   3. installa le dipendenze ESATTE del progetto, con verifica
 #      dell'integrita' (hash SHA-256) di ogni pacchetto;
 #   4. costruisce StemForge.app NATIVAMENTE su questo Mac (cosi' macOS
-#      non la tratta come app di uno sviluppatore sconosciuto);
+#      non la tratta come app di uno sviluppatore sconosciuto), con il
+#      decoder FFmpeg LGPL se lo zip lo contiene;
 #   5. la copia in /Applications.
 #
 # Serve la connessione a internet. Al primo avvio l'app scarichera' i
@@ -17,7 +18,6 @@
 # ============================================================================
 set -eu
 
-say() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 die() {
     printf '\n\033[31mERRORE: %s\033[0m\n\n' "$1"
     printf 'Premi Invio per chiudere...'
@@ -28,12 +28,8 @@ die() {
 # Percorso assoluto dello script PRIMA di qualsiasi cd: regge sia il
 # doppio click sia l'invocazione manuale con percorso relativo.
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_PATH="$SCRIPT_DIR/$(basename "$0")"
 cd "$SCRIPT_DIR"
-
-# 3.11 obbligato: PySide6 6.4 (l'ultima Qt per macOS < 11) richiede < 3.12.
-PY_VERSION="3.11.9"
-PY_PKG_URL="https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
-BUILD_ENV="$HOME/Library/Application Support/StemForge/build-env"
 
 # Due layout possibili: il pacchetto distribuito (StemForge/ accanto a
 # questo script) o il repo (script in packaging/installer/, sorgenti due
@@ -47,6 +43,15 @@ else
 Estrai TUTTO lo zip (non solo questo file) e rilancia lo script
 dalla cartella estratta."
 fi
+[ -f "$SRC_DIR/packaging/installer/comune.sh" ] \
+    || die "pacchetto incompleto (manca comune.sh): riscarica lo zip ed estrailo TUTTO."
+# shellcheck source=comune.sh
+. "$SRC_DIR/packaging/installer/comune.sh"
+
+# 3.11 obbligato: PySide6 6.4 (l'ultima Qt per macOS < 11) richiede < 3.12.
+# Il pacchetto "macos11" di python.org e' universal2 e gira da macOS 10.9.
+PY_VERSION="3.11.9"
+PY_PKG_URL="https://www.python.org/ftp/python/${PY_VERSION}/python-${PY_VERSION}-macos11.pkg"
 
 # ---------------------------------------------------------------- 1. il Mac
 say "Controllo questo Mac"
@@ -59,25 +64,30 @@ if [ "$MACOS_MAJOR" -lt 10 ] || { [ "$MACOS_MAJOR" -eq 10 ] && [ "${MACOS_MINOR:
 fi
 
 if [ "$(uname -m)" = "arm64" ]; then
-    # Mac Apple Silicon: StemForge e' costruita per Intel; via Rosetta funziona.
+    # Mac Apple Silicon: questa build e' per Intel e via Rosetta funziona,
+    # ma piu' lenta e senza GPU: il DMG arm64 e' la scelta giusta (§9.1).
     if arch -x86_64 /usr/bin/true 2>/dev/null; then
-        say "Mac Apple Silicon: proseguo tramite Rosetta 2"
-        exec arch -x86_64 /bin/sh "$0" "$@"
+        say "Mac Apple Silicon: proseguo tramite Rosetta 2 (il DMG arm64 sarebbe piu' veloce)"
+        # ${1+"$@"}: con set -u il bash 3.2 di macOS tratta un "$@" vuoto
+        # (il doppio click non passa argomenti) come variabile non definita
+        exec arch -x86_64 /bin/sh "$SCRIPT_PATH" ${1+"$@"}
     else
         die "serve Rosetta 2: esegui prima 'softwareupdate --install-rosetta' nel Terminale."
     fi
 fi
-echo "    macOS $(sw_vers -productVersion), Intel x86_64: ok."
+echo "    macOS $MACOS_VERSION, Intel x86_64: ok."
 
 # ------------------------------------------------------------- 2. Python
 say "Cerco Python 3.11"
 PYTHON=""
+# un python3.11 solo arm64 (Homebrew su Apple Silicon) costruirebbe per
+# l'architettura sbagliata: lo spec lo rifiuterebbe dopo 1 GB di download
 for candidate in \
     "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
     "/usr/local/bin/python3.11" \
     "$(command -v python3.11 2>/dev/null || true)"
 do
-    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+    if [ -n "$candidate" ] && is_python311_intel "$candidate"; then
         PYTHON="$candidate"
         break
     fi
@@ -85,58 +95,39 @@ done
 
 if [ -z "$PYTHON" ]; then
     say "Python 3.11 non trovato: scarico quello ufficiale (python.org)"
-    PKG="/tmp/stemforge-python-${PY_VERSION}.pkg"
+    PKG_DIR="$(mktemp -d)"
+    PKG="$PKG_DIR/python-${PY_VERSION}-macos11.pkg"
     curl -fL --progress-bar "$PY_PKG_URL" -o "$PKG" || die "download di Python non riuscito. Controlla la connessione e riprova."
+    check_python_pkg "$PKG"
     say "Installo Python ${PY_VERSION} (ti chiedera' la password)"
     sudo installer -pkg "$PKG" -target / || die "installazione di Python non riuscita."
-    rm -f "$PKG"
+    rm -rf "$PKG_DIR"
     PYTHON="/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11"
-    [ -x "$PYTHON" ] || die "Python installato ma non trovato dove atteso."
+    is_python311_intel "$PYTHON" || die "Python installato ma non trovato dove atteso."
 fi
-echo "    uso: $PYTHON ($("$PYTHON" -c 'import platform; print(platform.python_version())'))"
+echo "    uso: $PYTHON ($("$PYTHON" -c 'import platform; print(platform.python_version())'), x86_64)"
 
 # -------------------------------------------------- 3. dipendenze verificate
 say "Preparo l'ambiente di costruzione (puo' richiedere qualche minuto)"
 rm -rf "$BUILD_ENV"
 "$PYTHON" -m venv "$BUILD_ENV" || die "creazione dell'ambiente non riuscita."
-PYBIN="$BUILD_ENV/bin/python"
-"$PYBIN" -m pip install --quiet --upgrade pip || die "aggiornamento di pip non riuscito."
 
 say "Scarico le dipendenze (~1 GB: possono volerci DECINE DI MINUTI, il progresso e' visibile qui sotto)"
-[ -f "$SRC_DIR/requirements-macos-x86_64.lock" ] \
-    || die "file requirements-macos-x86_64.lock mancante in $SRC_DIR: il pacchetto e' incompleto, riscarica lo zip."
-# --only-binary :all: = questo Mac non deve MAI compilare codice nativo.
-# Le tre eccezioni sono Python puro pubblicato solo come sdist (elenco
-# allineato con ALLOW_SDIST_ONLY in gen_macos_lock.py).
-"$PYBIN" -m pip install --require-hashes \
-    --only-binary :all: --no-binary antlr4-python3-runtime,demucs,dora-search \
-    -r "$SRC_DIR/requirements-macos-x86_64.lock" \
-    || die "installazione dipendenze non riuscita.
-Se vedi errori di rete, controlla la connessione e rilancia.
-Se vedi 'Building wheel' o errori di compilazione, NON e' colpa tua:
-manda a chi ti ha dato questo pacchetto le ultime 30 righe qui sopra."
-"$PYBIN" -m pip install --quiet setuptools wheel "pyinstaller>=6.6,<7" \
-    || die "strumenti di costruzione non installabili (probabile problema di rete: riprova)."
-"$PYBIN" -m pip install --quiet "$SRC_DIR" --no-deps --no-build-isolation \
-    || die "installazione di StemForge dai sorgenti non riuscita: manda le righe qui sopra a chi ti ha dato il pacchetto."
+install_locked_deps
 
 # ------------------------------------------------------------ 4. build .app
 say "Costruisco StemForge.app su questo Mac"
-cd "$SRC_DIR/packaging"
-rm -rf build dist
-"$BUILD_ENV/bin/pyinstaller" stemforge.spec --noconfirm --log-level ERROR \
-    || die "costruzione dell'app non riuscita."
-[ -d "dist/StemForge.app" ] || die "l'app non risulta costruita."
+prepare_ffmpeg
+build_app
 
 # ------------------------------------------------------- 5. in /Applications
 say "Copio StemForge in /Applications"
-rm -rf "/Applications/StemForge.app"
-ditto "dist/StemForge.app" "/Applications/StemForge.app" || die "copia in /Applications non riuscita."
-rm -rf build dist
+copy_to_applications
 
 printf '\n\033[32m\033[1mFatto! StemForge e'\'' in /Applications.\033[0m\n'
-printf 'Al primo avvio scarichera'\'' i modelli (~1 GB, una volta sola)\n'
+ffmpeg_notice
+printf '\nAl primo avvio scarichera'\'' i modelli (~1 GB, una volta sola)\n'
 printf 'e misurera'\'' la velocita'\'' di questo Mac per darti stime oneste.\n\n'
 printf 'Premi Invio per aprire StemForge ora (o chiudi questa finestra)...'
 read -r _
-open "/Applications/StemForge.app"
+open "$APP_DEST"

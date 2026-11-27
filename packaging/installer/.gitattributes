@@ -1,0 +1,9 @@
+# Questi file finiscono su un Mac e gli script li esegue /bin/sh: un
+# checkout Windows con core.autocrlf li scriverebbe con CRLF, e una
+# cartella del repo copiata a mano sul Mac fallirebbe con
+# "command not found" su ogni riga. make_installer.py converte comunque
+# i testi dello zip; questo protegge anche la copia diretta del repo.
+*.command text eol=lf
+*.sh text eol=lf
+*.txt text eol=lf
+*.lock text eol=lf
