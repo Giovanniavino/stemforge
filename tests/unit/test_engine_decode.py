@@ -97,6 +97,8 @@ def test_soundfile_formats_never_touch_ffmpeg(tmp_path, fake_ffmpeg):
         ("brano.m4a", "missing", "err.ffmpeg_missing"),
         ("brano.m4a", "DRM", "err.drm"),
         ("brano.m4a", "corrupt", "err.corrupt"),
+        ("brano.m4p", "DRM", "err.drm"),  # FairPlay: il caso DRM reale
+        ("brano.m4p", "missing", "err.ffmpeg_missing"),
         ("brano.wav", "corrupt", "err.corrupt"),  # wav rotto: libsndfile e FFmpeg d'accordo
         ("brano.wav", "missing", "err.corrupt"),  # libsndfile doveva bastare: è il file
         ("brano.xyz", "corrupt", "err.unsupported"),
@@ -228,3 +230,10 @@ def test_supported_extensions_cover_the_spec():
     # §5.7: wav flac mp3 ogg aiff m4a/aac alac (alac sta in .m4a)
     for ext in (".wav", ".flac", ".mp3", ".ogg", ".aiff", ".aif", ".m4a", ".aac"):
         assert ext in decode.SUPPORTED_EXTENSIONS
+
+
+def test_drm_files_pass_the_drop_to_say_drm():
+    # rifiutato al drop, un .m4p FairPlay non arriverebbe mai a err.drm
+    from stemforge.worker import planning
+
+    assert planning.is_supported(Path("Brano acquistato.M4P"))

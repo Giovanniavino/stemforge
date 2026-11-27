@@ -12,6 +12,8 @@ from __future__ import annotations
 SOUNDFILE_EXTENSIONS = frozenset(
     {".wav", ".wave", ".flac", ".ogg", ".oga", ".mp3", ".aiff", ".aif", ".aifc"}
 )
-# Solo FFmpeg: m4a porta AAC o ALAC, .aac è AAC grezzo (ADTS).
-FFMPEG_EXTENSIONS = frozenset({".m4a", ".aac"})
+# Solo FFmpeg: m4a porta AAC o ALAC, .aac è AAC grezzo (ADTS). .m4p è
+# AAC FairPlay: si accetta al drop perché l'utente legga "protetto da
+# DRM" (FFmpeg lo segnala) invece di un generico "non supportato".
+FFMPEG_EXTENSIONS = frozenset({".m4a", ".aac", ".m4p"})
 SUPPORTED_EXTENSIONS = SOUNDFILE_EXTENSIONS | FFMPEG_EXTENSIONS
