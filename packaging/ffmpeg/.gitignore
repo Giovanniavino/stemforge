@@ -1,0 +1,4 @@
+# prodotti locali della build FFmpeg: mai nel repo
+out/
+cache/
+build/
