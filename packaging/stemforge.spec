@@ -211,7 +211,12 @@ a = Analysis(
         "stemforge.engine.drumsplit",
         "stemforge.engine.vocalsplit",
         "stemforge.engine.dereverb",
+        # decode.py lo importa per nome (importlib): PyInstaller non lo vede
+        "stemforge.engine.ffmpeg",
         "soundfile",
+        # i pesi demucs nominano numpy.core.multiarray: con numpy 2 e' un
+        # alias che PyInstaller non segue da solo (selftest del pacchetto win-x64)
+        "numpy.core.multiarray",
         *collect_submodules("demucs"),
         *collect_submodules("julius"),
         *collect_submodules("openunmix"),

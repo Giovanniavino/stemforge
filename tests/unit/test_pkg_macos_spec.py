@@ -276,3 +276,14 @@ def test_every_option_is_one_pyinstaller_reads(tmp_path, monkeypatch, system, ma
     for kind, accepted in reads.items():
         if kind in made:
             assert set(made[kind].kwargs) <= accepted, (kind, set(made[kind].kwargs) - accepted)
+
+
+def test_modules_imported_by_name_are_bundled(tmp_path, monkeypatch):
+    # importati con importlib: senza hiddenimports il pacchetto non li ha
+    # (selftest win-x64: niente FFmpeg e pesi demucs illeggibili)
+    from stemforge.engine import decode
+
+    made = run_spec(tmp_path, monkeypatch, "win32", "AMD64", ffmpeg_for="win-x64")
+    hidden = made["Analysis"].kwargs["hiddenimports"]
+    assert decode._FFMPEG_MODULE in hidden
+    assert "numpy.core.multiarray" in hidden
