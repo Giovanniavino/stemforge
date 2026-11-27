@@ -87,14 +87,6 @@ files) into the application next to this file. Canonical texts:
 PART 1 — FLAGS (read first)
 ===========================
 
-[!] BLOCKING — PyAV (`av==13.1.0`) is still in pyproject.toml and in the
-    three lock files of this commit (the dependency work area removes it). PyAV's own code is BSD-3-Clause, but
-    its wheels embed an FFmpeg configured with `--enable-gpl` plus x264 /
-    x265: GPL-3.0. BUILD_SPEC D9 removes it in favour of our minimal LGPL
-    FFmpeg. NO distributed build may contain PyAV. Its entry stays in
-    Part 2 only so that every lock pin is accounted for; delete it when
-    the locks no longer contain `av`.
-
 [!] TO FIX IN THE BUILD — Qt modules that are GPL-3.0-only in the
     open-source edition (Qt Virtual Keyboard, Qt Charts, Qt Data
     Visualization, Qt Graphs, Qt Quick 3D, ...) ship in the PySide6
@@ -162,12 +154,6 @@ source.
   license  : BSD-3-Clause (PyPI: "BSD"; text shipped as omegaconf's ATTRIBUTION/LICENSE-antlr4)
   copyright: Copyright (c) 2012-2022 The ANTLR Project
   source   : https://github.com/antlr/antlr4
-
-[av]
-  versions : 13.1.0 (legacy-intel, mac-arm64, win-x64)
-  license  : BSD-3-Clause for PyAV — wheel embeds FFmpeg built --enable-gpl (GPL-3.0)
-  status   : NOT TO BE DISTRIBUTED — see Part 1, BUILD_SPEC D9
-  source   : https://github.com/PyAV-Org/PyAV
 
 [certifi]
   versions : 2026.7.22 (legacy-intel) | 2026.10.23 (mac-arm64, win-x64, linux-x64)
