@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from stemforge.engine import calibrate
+from stemforge.engine import paths
 from stemforge.engine.formats import SUPPORTED_EXTENSIONS
 from stemforge.engine.planner import estimate_seconds, plan
 from stemforge.model.job import SeparationJob
@@ -51,6 +51,9 @@ class PlanSummary:
 
 
 def summarize(job: SeparationJob, duration_s: float) -> PlanSummary:
+    # pigro: calibrate porta numpy, che l'avvio della finestra non usa
+    from stemforge.engine import calibrate
+
     plan_ = plan(job)
     rates = calibrate.load_rates()
     seconds = estimate_seconds(plan_, duration_s, rates) * ESTIMATE_MARGIN
@@ -75,7 +78,7 @@ def is_supported(path: Path) -> bool:
 
 def prepared_marker() -> Path:
     """Il primo avvio è già stato fatto? (pesi scaricati + calibrazione)."""
-    return calibrate.calibration_path().parent / "prepared.json"
+    return paths.calibration_path().parent / "prepared.json"
 
 
 def format_eta(seconds: float) -> str:

@@ -6,6 +6,9 @@ Sono i test che impediscono al progetto di tornare quello di prima.
 from __future__ import annotations
 
 import ast
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / "src" / "stemforge"
@@ -88,6 +91,14 @@ def test_ui_never_imports_engine_or_heavy_libs():
                 assert not (name == prefix or name.startswith(prefix + ".")), (
                     f"ui/{path.name} importa {name}: vietato (§8.5)"
                 )
+
+
+def test_window_startup_skips_calibrate():
+    # calibrate porta numpy: fuori dall'avvio vale ~30% della CPU (docs/optimization/O3.md)
+    code = "import sys, stemforge.ui.main_window; print('stemforge.engine.calibrate' in sys.modules)"
+    env = {**os.environ, "PYTHONPATH": str(SRC.parent)}
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, env=env)
+    assert out.stdout.strip() == "False", out.stderr
 
 
 def test_model_layer_has_no_io():
