@@ -51,8 +51,8 @@ def click_focused_button(window: QWidget) -> bool:
     in un dialogo Invio su una casella attiva il pulsante predefinito
     (qui Separa), non la spunta."""
     focused = QApplication.focusWidget()
-    if isinstance(focused, (QPushButton, QToolButton)) and window.isAncestorOf(focused):
-        if focused.isEnabled() and focused.isVisible():
-            focused.click()
-            return True
+    if (isinstance(focused, (QPushButton, QToolButton)) and window.isAncestorOf(focused)
+            and focused.isEnabled() and focused.isVisible()):
+        focused.click()
+        return True
     return False

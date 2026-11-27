@@ -132,16 +132,7 @@ class StemPicker(QWidget):
             button.setObjectName("shortcut")
             shortcuts.addWidget(button)
         layout.addLayout(shortcuts)
-
-        grid = QGridLayout()
-        grid.setSpacing(8)
-        self._boxes: dict[StemKind, QCheckBox] = {}
-        for index, kind in enumerate(_BASE_ICONS):
-            box = QCheckBox()
-            box.setChecked(kind in _DEFAULT_CHECKED)
-            grid.addWidget(box, index // _GRID_COLUMNS, index % _GRID_COLUMNS)
-            self._boxes[kind] = box
-        layout.addLayout(grid)
+        self._build_base_grid(layout)
 
         self._drum_group = StemGroup(_DRUM_KINDS)
         layout.addWidget(self._drum_group)
@@ -154,6 +145,17 @@ class StemPicker(QWidget):
 
         layout.addStretch(1)
         self._build_bottom(layout)
+
+    def _build_base_grid(self, layout: QVBoxLayout) -> None:
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        self._boxes: dict[StemKind, QCheckBox] = {}
+        for index, kind in enumerate(_BASE_ICONS):
+            box = QCheckBox()
+            box.setChecked(kind in _DEFAULT_CHECKED)
+            grid.addWidget(box, index // _GRID_COLUMNS, index % _GRID_COLUMNS)
+            self._boxes[kind] = box
+        layout.addLayout(grid)
 
     def _apply_derived_availability(self) -> None:
         # §12-M6: un derivato senza modello vero non si mostra affatto

@@ -39,7 +39,8 @@ ui = [
     "PySide6==6.4.3; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     "PySide6==6.7.3; sys_platform != 'darwin' or platform_machine != 'x86_64'",
 ]
-dev = ["pytest>=8", "pyinstaller>=6.6", "pillow>=10"]
+# ruff e mypy: solo controlli statici del dev-box ("make lint"), mai nell'app
+dev = ["pytest>=8", "pyinstaller>=6.6", "pillow>=10", "ruff==0.17.6", "mypy==2.4.1"]
 
 [project.scripts]
 stemforge = "stemforge.cli:main"
@@ -62,6 +63,41 @@ explicit = true
 [tool.uv.sources]
 torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
 torchaudio = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[tool.ruff]
+target-version = "py311"
+src = ["src"]
+# solo per isort: E501 e' ignorata, nessun formatter
+line-length = 120
+
+[tool.ruff.lint]
+# Regole che il codice rispetta (docs/optimization/O5.md). Ignorate:
+# E501 (le stringhe di translate() restano su una riga per lupdate),
+# SIM105 (except esplicito col perche' accanto, §11 regola 5), SIM112
+# (le variabili d'ambiente di Windows si scrivono come le scrive Windows).
+select = ["E", "F", "W", "I", "B", "C4", "SIM", "PIE", "PLE"]
+ignore = ["E501", "SIM105", "SIM112"]
+
+[tool.ruff.lint.per-file-ignores]
+# F811: le fixture di pytest omonime di un import; il resto sono le
+# violazioni che i test avevano gia', da correggere fuori da O5
+"tests/**" = ["F811", "I001", "F401", "B007", "B023", "B905", "SIM102"]
+
+[tool.mypy]
+# --strict dove il codice e' puro (model/ e la parte di engine/ senza torch
+# in esecuzione); "mypy" senza argomenti controlla questi file
+files = [
+    "src/stemforge/model",
+    "src/stemforge/engine/planner.py",
+    "src/stemforge/engine/formats.py",
+    "src/stemforge/engine/blocks.py",
+    "src/stemforge/engine/downmix.py",
+    "src/stemforge/engine/contract.py",
+    "src/stemforge/engine/errors.py",
+]
+mypy_path = "src"
+strict = true
+follow_imports = "silent"
 
 [tool.pytest.ini_options]
 # Famiglie di test (BUILD_SPEC §10.6). Il giro normale esclude cio' che

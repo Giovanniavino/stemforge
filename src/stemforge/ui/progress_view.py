@@ -42,10 +42,7 @@ class ProgressView(QWidget):
         layout.setSpacing(16)
         layout.addStretch(1)
 
-        self._phase = QLabel("")
-        self._phase.setObjectName("title")
-        self._phase.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._phase.setWordWrap(True)
+        self._phase = _centered_label("title")
         layout.addWidget(self._phase)
 
         self._bar = QProgressBar()
@@ -56,16 +53,10 @@ class ProgressView(QWidget):
         self._bar.setTextVisible(False)
         layout.addWidget(self._bar)
 
-        self._remaining = QLabel("")
-        self._remaining.setObjectName("dim")
-        self._remaining.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._remaining.setWordWrap(True)
+        self._remaining = _centered_label("dim")
         layout.addWidget(self._remaining)
 
-        self._warnings = QLabel("")
-        self._warnings.setObjectName("dim")
-        self._warnings.setWordWrap(True)
-        self._warnings.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._warnings = _centered_label("dim")
         layout.addWidget(self._warnings)
 
         layout.addStretch(1)
@@ -167,6 +158,14 @@ class ProgressView(QWidget):
             )
         self._remaining_text = text
         self._show_status()
+
+
+def _centered_label(object_name: str) -> QLabel:
+    label = QLabel("")
+    label.setObjectName(object_name)
+    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    label.setWordWrap(True)
+    return label
 
 
 def format_remaining(seconds: float) -> str:
