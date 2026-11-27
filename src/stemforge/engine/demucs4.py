@@ -9,10 +9,10 @@ BUILD_SPEC §5.1, §5.1.1. Scelte non ovvie, con la ragione:
   quindi il conteggio è esatto e `should_cancel` viene consultato
   esattamente fra un segmento e l'altro (§5.5).
 - L'esecuzione parziale (§5.1.1) costruisce un BagOfModels ridotto con i
-  PESI REALI letti dallo yaml del bag (lo stesso che legge demucs): se un giorno i pesi non fossero
-  one-hot, la selezione includerebbe automaticamente ogni sotto-modello
-  con peso non nullo sulle sorgenti richieste, restando identica
-  all'insieme completo per costruzione.
+  PESI REALI letti dallo yaml del bag (lo stesso che legge demucs): se
+  un giorno i pesi non fossero one-hot, la selezione includerebbe
+  automaticamente ogni sotto-modello con peso non nullo sulle sorgenti
+  richieste, restando identica all'insieme completo per costruzione.
 - La normalizzazione (media/std del mix) sta fuori da apply_model, come
   in demucs/separate.py: va replicata qui e disfatta in uscita.
 """
